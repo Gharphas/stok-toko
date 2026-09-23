@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockMaster — Aplikasi Hitung Stok Toko</title>
+  <meta name="description" content="Aplikasi manajemen stok barang toko: pemasukan, pengeluaran, dan hitung stok real-time." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Toast Notification -->
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <div class="logo-icon"><i class="ri-store-3-fill"></i></div>
+        <div class="logo-text">
+          <span class="logo-title">StockMaster</span>
+          <span class="logo-sub">Manajemen Stok Toko</span>
+        </div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-tab="dashboard" id="nav-dashboard">
+        <i class="ri-dashboard-3-line"></i>
+        <span>Dashboard</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="produk" id="nav-produk">
+        <i class="ri-archive-line"></i>
+        <span>Katalog Barang</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="masuk" id="nav-masuk">
+        <i class="ri-arrow-down-circle-line"></i>
+        <span>Barang Masuk</span>
+        <span class="nav-badge badge-green">IN</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="keluar" id="nav-keluar">
+        <i class="ri-arrow-up-circle-line"></i>
+        <span>Barang Keluar</span>
+        <span class="nav-badge badge-red">OUT</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="opname" id="nav-opname">
+        <i class="ri-calculator-line"></i>
+        <span>Hitung Barang</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="riwayat" id="nav-riwayat">
+        <i class="ri-history-line"></i>
+        <span>Riwayat Mutasi</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="theme-toggle-btn" id="themeToggle" title="Ganti Tema">
+        <i class="ri-moon-line" id="themeIcon"></i>
+        <span id="themeLabel">Mode Gelap</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Wrapper -->
+  <div class="main-wrapper">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-btn" id="menuBtn" aria-label="Toggle Menu">
+          <i class="ri-menu-3-line"></i>
+        </button>
+        <h1 class="topbar-title" id="topbarTitle">Dashboard</h1>
+      </div>
+      <div class="topbar-right">
+        <div class="search-box">
+          <i class="ri-search-line"></i>
+          <input type="text" id="globalSearch" placeholder="Cari barang..." autocomplete="off" />
+        </div>
+        <div class="topbar-date" id="topbarDate"></div>
+      </div>
+    </header>
+
+    <!-- Content Area -->
+    <main class="content">
+
+      <!-- ===================== TAB: DASHBOARD ===================== -->
+      <section class="tab-view active" id="tab-dashboard">
+        <div class="stats-grid">
+          <div class="stat-card card-blue">
+            <div class="stat-icon"><i class="ri-archive-2-fill"></i></div>
+            <div class="stat-info">
+              <p class="stat-label">Total Jenis Barang</p>
+              <h2 class="stat-value" id="statJenis">0</h2>
+              <p class="stat-sub">SKU Terdaftar</p>
+            </div>
+          </div>
+          <div class="stat-card card-green">
+            <div class="stat-icon"><i class="ri-stack-fill"></i></div>
+            <div class="stat-info">
+              <p class="stat-label">Total Unit Stok</p>
+              <h2 class="stat-value" id="statUnit">0</h2>
+              <p class="stat-sub">Total Keseluruhan Barang</p>
+            </div>
+          </div>
+          <div class="stat-card card-purple">
+            <div class="stat-icon"><i class="ri-money-dollar-circle-fill"></i></div>
+            <div class="stat-info">
+              <p class="stat-label">Nilai Aset Toko</p>
+              <h2 class="stat-value" id="statNilai">Rp 0</h2>
+              <p class="stat-sub">Estimasi Modal Stok</p>
+            </div>
+          </div>
+          <div class="stat-card card-red">
+            <div class="stat-icon"><i class="ri-error-warning-fill"></i></div>
+            <div class="stat-info">
+              <p class="stat-label">Stok Kritis</p>
+              <h2 class="stat-value" id="statKritis">0</h2>
+              <p class="stat-sub">Barang Perlu Restock</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Activity + Low Stock Alert -->
+        <div class="dash-grid">
+          <div class="card">
+            <div class="card-header">
+              <h3><i class="ri-history-line"></i> Transaksi Terakhir</h3>
+              <button class="btn btn-ghost btn-sm" onclick="switchTab('riwayat')">Lihat Semua</button>
+            </div>
+            <div class="card-body" id="dashRecentList">
+              <div class="empty-state"><i class="ri-inbox-2-line"></i><p>Belum ada transaksi</p></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3><i class="ri-alert-line"></i> Peringatan Stok</h3>
+            </div>
+            <div class="card-body" id="dashAlertList">
+              <div class="empty-state"><i class="ri-checkbox-circle-line"></i><p>Semua stok aman</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB: KATALOG PRODUK ===================== -->
+      <section class="tab-view" id="tab-produk">
+        <div class="section-toolbar">
+          <div class="filter-bar">
+            <select id="filterKategori" class="form-select-sm">
+              <option value="">Semua Kategori</option>
+            </select>
+            <select id="filterStatus" class="form-select-sm">
+              <option value="">Semua Status</option>
+              <option value="aman">Stok Aman</option>
+              <option value="menipis">Stok Menipis</option>
+              <option value="habis">Stok Habis</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" id="btnAddProduk">
+            <i class="ri-add-line"></i> Tambah Barang
+          </button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table class="data-table" id="tableProduk">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Nama Barang</th>
+                  <th>Kategori</th>
+                  <th>Satuan</th>
+                  <th>Stok</th>
+                  <th>Min. Stok</th>
+                  <th>Harga Beli</th>
+                  <th>Harga Jual</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="bodyProduk">
+                <tr><td colspan="10" class="empty-row"><i class="ri-inbox-2-line"></i> Belum ada barang terdaftar</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB: BARANG MASUK ===================== -->
+      <section class="tab-view" id="tab-masuk">
+        <div class="tx-layout">
+          <!-- Form -->
+          <div class="card tx-form-card">
+            <div class="card-header">
+              <h3><i class="ri-arrow-down-circle-fill text-green"></i> Form Barang Masuk</h3>
+            </div>
+            <div class="card-body">
+              <form id="formMasuk" autocomplete="off">
+                <div class="form-group">
+                  <label for="masukProduk">Pilih Barang <span class="req">*</span></label>
+                  <select id="masukProduk" class="form-control" required>
+                    <option value="">-- Pilih Barang --</option>
+                  </select>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="masukJumlah">Jumlah Masuk <span class="req">*</span></label>
+                    <input type="number" id="masukJumlah" class="form-control" min="1" required placeholder="0" />
+                  </div>
+                  <div class="form-group">
+                    <label for="masukHarga">Harga Beli (Rp) <span class="req">*</span></label>
+                    <input type="number" id="masukHarga" class="form-control" min="0" required placeholder="0" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="masukSupplier">Supplier / Sumber</label>
+                  <input type="text" id="masukSupplier" class="form-control" placeholder="Nama supplier atau sumber barang" />
+                </div>
+                <div class="form-group">
+                  <label for="masukNota">Nomor Nota / Faktur</label>
+                  <input type="text" id="masukNota" class="form-control" placeholder="Opsional" />
+                </div>
+                <div class="form-group">
+                  <label for="masukKet">Keterangan</label>
+                  <textarea id="masukKet" class="form-control" rows="2" placeholder="Catatan tambahan..."></textarea>
+                </div>
+                <div class="preview-box" id="masukPreview" style="display:none;">
+                  <p class="preview-label">Total Nilai Pembelian</p>
+                  <p class="preview-value" id="masukTotal">Rp 0</p>
+                </div>
+                <button type="submit" class="btn btn-success btn-block">
+                  <i class="ri-check-line"></i> Simpan Barang Masuk
+                </button>
+              </form>
+            </div>
+          </div>
+          <!-- Recent Masuk -->
+          <div class="card tx-list-card">
+            <div class="card-header">
+              <h3>Riwayat Barang Masuk</h3>
+            </div>
+            <div class="tx-list" id="listMasuk">
+              <div class="empty-state"><i class="ri-inbox-2-line"></i><p>Belum ada data</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB: BARANG KELUAR ===================== -->
+      <section class="tab-view" id="tab-keluar">
+        <div class="tx-layout">
+          <!-- Form -->
+          <div class="card tx-form-card">
+            <div class="card-header">
+              <h3><i class="ri-arrow-up-circle-fill text-red"></i> Form Barang Keluar</h3>
+            </div>
+            <div class="card-body">
+              <form id="formKeluar" autocomplete="off">
+                <div class="form-group">
+                  <label for="keluarProduk">Pilih Barang <span class="req">*</span></label>
+                  <select id="keluarProduk" class="form-control" required>
+                    <option value="">-- Pilih Barang --</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Stok Tersedia Saat Ini</label>
+                  <div class="stok-badge-info" id="keluarStokInfo">Pilih barang terlebih dahulu</div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="keluarJumlah">Jumlah Keluar <span class="req">*</span></label>
+                    <input type="number" id="keluarJumlah" class="form-control" min="1" required placeholder="0" />
+                  </div>
+                  <div class="form-group">
+                    <label for="keluarJenis">Jenis Pengeluaran <span class="req">*</span></label>
+                    <select id="keluarJenis" class="form-control" required>
+                      <option value="penjualan">Penjualan</option>
+                      <option value="retur">Retur ke Supplier</option>
+                      <option value="rusak">Barang Rusak / Kadaluarsa</option>
+                      <option value="sample">Sample / Promosi</option>
+                      <option value="lainnya">Lainnya</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="keluarKet">Keterangan</label>
+                  <textarea id="keluarKet" class="form-control" rows="2" placeholder="Catatan tambahan..."></textarea>
+                </div>
+                <div class="preview-box" id="keluarPreview" style="display:none;">
+                  <p class="preview-label">Estimasi Nilai Pengeluaran</p>
+                  <p class="preview-value" id="keluarTotal">Rp 0</p>
+                </div>
+                <button type="submit" class="btn btn-danger btn-block">
+                  <i class="ri-check-line"></i> Simpan Barang Keluar
+                </button>
+              </form>
+            </div>
+          </div>
+          <!-- Recent Keluar -->
+          <div class="card tx-list-card">
+            <div class="card-header">
+              <h3>Riwayat Barang Keluar</h3>
+            </div>
+            <div class="tx-list" id="listKeluar">
+              <div class="empty-state"><i class="ri-inbox-2-line"></i><p>Belum ada data</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB: HITUNG BARANG / OPNAME ===================== -->
+      <section class="tab-view" id="tab-opname">
+        <div class="card" style="margin-bottom:1rem;">
+          <div class="card-header">
+            <h3><i class="ri-calculator-line"></i> Hitung Barang (Stock Opname)</h3>
+            <div style="display:flex;gap:.5rem;">
+              <button class="btn btn-ghost btn-sm" id="btnResetOpname"><i class="ri-refresh-line"></i> Reset</button>
+              <button class="btn btn-warning btn-sm" id="btnSesuaikanOpname"><i class="ri-equalizer-line"></i> Sesuaikan Stok Sistem</button>
+            </div>
+          </div>
+          <div class="opname-info">
+            <i class="ri-information-line"></i>
+            <span>Masukkan jumlah fisik nyata hasil penghitungan. Sistem akan menampilkan selisih antara stok tercatat dan stok fisik. Klik <strong>Sesuaikan Stok Sistem</strong> untuk menyimpan koreksi.</span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="tableOpname">
+              <thead>
+                <tr>
+                  <th>Nama Barang</th>
+                  <th>Satuan</th>
+                  <th>Stok Sistem</th>
+                  <th>Stok Fisik (Input)</th>
+                  <th>Selisih</th>
+                  <th>Keterangan</th>
+                </tr>
+              </thead>
+              <tbody id="bodyOpname">
+                <tr><td colspan="6" class="empty-row"><i class="ri-inbox-2-line"></i> Tambahkan barang di Katalog terlebih dahulu</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3><i class="ri-history-line"></i> Riwayat Opname</h3></div>
+          <div class="card-body" id="opnameHistory">
+            <div class="empty-state"><i class="ri-inbox-2-line"></i><p>Belum ada riwayat opname</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB: RIWAYAT MUTASI ===================== -->
+      <section class="tab-view" id="tab-riwayat">
+        <div class="section-toolbar">
+          <div class="filter-bar">
+            <select id="filterRiwayatJenis" class="form-select-sm">
+              <option value="">Semua Jenis</option>
+              <option value="masuk">Barang Masuk</option>
+              <option value="keluar">Barang Keluar</option>
+              <option value="opname">Stock Opname</option>
+            </select>
+            <input type="date" id="filterRiwayatTgl" class="form-select-sm" />
+          </div>
+          <button class="btn btn-danger btn-sm" id="btnClearRiwayat">
+            <i class="ri-delete-bin-line"></i> Hapus Semua
+          </button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table class="data-table" id="tableRiwayat">
+              <thead>
+                <tr>
+                  <th>Waktu</th>
+                  <th>Jenis</th>
+                  <th>Barang</th>
+                  <th>Jumlah</th>
+                  <th>Keterangan</th>
+                  <th>Nilai</th>
+                </tr>
+              </thead>
+              <tbody id="bodyRiwayat">
+                <tr><td colspan="6" class="empty-row"><i class="ri-inbox-2-line"></i> Belum ada riwayat mutasi</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ===================== MODAL: TAMBAH/EDIT PRODUK ===================== -->
+  <div class="modal-overlay" id="modalProduk">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalProdukTitle">Tambah Barang Baru</h3>
+        <button class="modal-close" id="closeProdukModal" aria-label="Tutup"><i class="ri-close-line"></i></button>
+      </div>
+      <div class="modal-body">
+        <form id="formProduk" autocomplete="off">
+          <input type="hidden" id="produkId" />
+          <div class="form-row">
+            <div class="form-group">
+              <label for="produkNama">Nama Barang <span class="req">*</span></label>
+              <input type="text" id="produkNama" class="form-control" required placeholder="Nama barang" />
+            </div>
+            <div class="form-group">
+              <label for="produkKategori">Kategori <span class="req">*</span></label>
+              <input type="text" id="produkKategori" class="form-control" required placeholder="e.g. Sembako, Minuman" list="kategoriList" />
+              <datalist id="kategoriList"></datalist>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="produkSatuan">Satuan <span class="req">*</span></label>
+              <select id="produkSatuan" class="form-control" required>
+                <option value="Pcs">Pcs</option>
+                <option value="Kg">Kg</option>
+                <option value="Gram">Gram</option>
+                <option value="Liter">Liter</option>
+                <option value="Dus">Dus</option>
+                <option value="Pack">Pack</option>
+                <option value="Botol">Botol</option>
+                <option value="Karung">Karung</option>
+                <option value="Lusin">Lusin</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="produkStokAwal">Stok Awal</label>
+              <input type="number" id="produkStokAwal" class="form-control" min="0" value="0" placeholder="0" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="produkHargaBeli">Harga Beli (Rp) <span class="req">*</span></label>
+              <input type="number" id="produkHargaBeli" class="form-control" min="0" required placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label for="produkHargaJual">Harga Jual (Rp) <span class="req">*</span></label>
+              <input type="number" id="produkHargaJual" class="form-control" min="0" required placeholder="0" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="produkMinStok">Batas Stok Minimum (Alert)</label>
+            <input type="number" id="produkMinStok" class="form-control" min="0" value="5" placeholder="5" />
+          </div>
+          <div class="form-group">
+            <label for="produkDeskripsi">Deskripsi / Keterangan</label>
+            <textarea id="produkDeskripsi" class="form-control" rows="2" placeholder="Keterangan tambahan..."></textarea>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" id="cancelProdukModal">Batal</button>
+            <button type="submit" class="btn btn-primary" id="saveProdukBtn">Simpan Barang</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: KONFIRMASI HAPUS -->
+  <div class="modal-overlay" id="modalConfirm">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <h3 id="confirmTitle">Konfirmasi</h3>
+        <button class="modal-close" id="closeConfirmModal"><i class="ri-close-line"></i></button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMsg">Apakah Anda yakin?</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="cancelConfirm">Batal</button>
+          <button class="btn btn-danger" id="okConfirm">Ya, Hapus</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
