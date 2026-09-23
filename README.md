@@ -14,31 +14,35 @@ Aplikasi **Hitung Stock Barang Toko** berbasis web (HTML, CSS, JavaScript).
 
 ## Cara Menjalankan
 
-Cukup buka `index.html` langsung di browser, atau jalankan server lokal:
-
+### 1. Jalankan di Komputer & Buka di HP (Jaringan Wi-Fi)
+Jalankan server lokal menggunakan Node.js:
 ```bash
-# Menggunakan Node.js
-node -e "const http=require('http'),fs=require('fs'),path=require('path');const MIME={'.html':'text/html','.css':'text/css','.js':'application/javascript'};http.createServer((req,res)=>{const fp=path.join(__dirname,req.url==='/'?'index.html':req.url);fs.readFile(fp,(err,d)=>{if(err){res.writeHead(404);res.end();}else{res.writeHead(200,{'Content-Type':MIME[path.extname(fp)]||'text/plain'});res.end(d);}});}).listen(5500,()=>console.log('Running at http://localhost:5500'));"
+node serve.js
 ```
+Terminal akan langsung menampilkan alamat akses:
+- **Di Laptop/PC**: `http://localhost:5500`
+- **Di Handphone**: `http://192.168.1.11:5500` *(atau IP Wi-Fi Anda)*
 
-Lalu buka browser ke [http://localhost:5500](http://localhost:5500)
+> **Tips HP**: Agar tampilan terlihat seperti aplikasi asli tanpa bar browser, buka link di Chrome (Android) lalu pilih **"Tambahkan ke Layar Utama" (Install App)**, atau di Safari (iOS) pilih **"Add to Home Screen"**.
+
+### 2. Buka Online Lewat GitHub Pages
+Aplikasi ini juga dapat diakses dari mana saja tanpa perlu menyalakan laptop jika GitHub Pages telah diaktifkan:
+- **URL**: `https://gharphas.github.io/stok-toko/`
 
 ## Teknologi
-- HTML5 Semantik
-- Vanilla CSS (Dark Mode, Glassmorphism, Responsif)
-- JavaScript ES6+ (Data disimpan di `localStorage` browser)
+- HTML5 Semantik + PWA Meta Tags (Responsif Mobile & Desktop)
+- Vanilla CSS (Mobile-First, Bottom Navigation, Dark Mode, Glassmorphism)
+- JavaScript ES6+ (Penyimpanan lokal `localStorage` di browser)
 
 ## Struktur File
 ```
 stok-toko/
-├── index.html    # Struktur halaman utama
-├── style.css     # Desain & tema
-├── app.js        # Logika aplikasi
+├── index.html    # Struktur halaman utama & Bottom Navigation
+├── style.css     # Desain, tema dark mode, & responsive mobile
+├── app.js        # Logika aplikasi & navigasi handphone
+├── serve.js      # Server lokal multi-device (Laptop & HP)
 └── README.md
 ```
-
-## Screenshot
-Dashboard menampilkan statistik stok, peringatan stok kritis, dan riwayat transaksi terakhir secara real-time.
 
 ---
 Made with ❤️ by Gharphas

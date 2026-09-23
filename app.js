@@ -107,10 +107,15 @@ const tabTitles = {
 };
 
 function switchTab(name) {
-  // Update nav
+  // Update sidebar nav
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.getElementById(`nav-${name}`);
   if (navEl) navEl.classList.add('active');
+
+  // Update bottom nav
+  document.querySelectorAll('.bottom-nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.tab === name);
+  });
 
   // Update views
   document.querySelectorAll('.tab-view').forEach(el => el.classList.remove('active'));
@@ -123,8 +128,11 @@ function switchTab(name) {
   // Refresh content
   renderByTab(name);
 
-  // Close mobile sidebar
-  document.getElementById('sidebar').classList.remove('mobile-open');
+  // Close mobile sidebar and overlay
+  const sidebar = document.getElementById('sidebar');
+  const sidebarOverlay = document.getElementById('sidebarOverlay');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (sidebarOverlay) sidebarOverlay.classList.remove('active');
 }
 
 function renderByTab(name) {
@@ -136,10 +144,21 @@ function renderByTab(name) {
   if (name === 'riwayat')  renderRiwayat();
 }
 
-// Nav click events
+// Nav click events (Sidebar)
 document.querySelectorAll('.nav-item').forEach(el => {
   el.addEventListener('click', (e) => {
     e.preventDefault();
+    switchTab(el.dataset.tab);
+  });
+});
+
+// Nav click events (Bottom Navigation Bar)
+document.querySelectorAll('.bottom-nav-item').forEach(el => {
+  el.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (navigator.vibrate) {
+      try { navigator.vibrate(12); } catch {}
+    }
     switchTab(el.dataset.tab);
   });
 });
@@ -159,13 +178,23 @@ document.getElementById('globalSearch').addEventListener('input', function() {
 // ============================================================
 function applyTheme(dark) {
   document.body.classList.toggle('dark', dark);
-  document.getElementById('themeIcon').className = dark ? 'ri-sun-line' : 'ri-moon-line';
-  document.getElementById('themeLabel').textContent = dark ? 'Mode Terang' : 'Mode Gelap';
+  const themeIcon = document.getElementById('themeIcon');
+  const themeQuickIcon = document.getElementById('themeQuickIcon');
+  const themeLabel = document.getElementById('themeLabel');
+  
+  if (themeIcon) themeIcon.className = dark ? 'ri-sun-line' : 'ri-moon-line';
+  if (themeQuickIcon) themeQuickIcon.className = dark ? 'ri-sun-line' : 'ri-moon-line';
+  if (themeLabel) themeLabel.textContent = dark ? 'Mode Terang' : 'Mode Gelap';
   localStorage.setItem('sm_theme', dark ? 'dark' : 'light');
 }
+
 document.getElementById('themeToggle').addEventListener('click', () => {
   applyTheme(!document.body.classList.contains('dark'));
 });
+document.getElementById('themeQuickBtn')?.addEventListener('click', () => {
+  applyTheme(!document.body.classList.contains('dark'));
+});
+
 // Load saved theme
 applyTheme(localStorage.getItem('sm_theme') === 'dark');
 
@@ -174,6 +203,7 @@ applyTheme(localStorage.getItem('sm_theme') === 'dark');
 // ============================================================
 function updateDate() {
   const el = document.getElementById('topbarDate');
+  if (!el) return;
   el.textContent = new Date().toLocaleDateString('id-ID', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
@@ -182,17 +212,81 @@ updateDate();
 setInterval(updateDate, 60000);
 
 // ============================================================
-//  MOBILE MENU
+//  MOBILE SIDEBAR & DRAWER
 // ============================================================
-document.getElementById('menuBtn').addEventListener('click', () => {
-  document.getElementById('sidebar').classList.toggle('mobile-open');
+const sidebarEl = document.getElementById('sidebar');
+const overlayEl = document.getElementById('sidebarOverlay');
+
+function openMobileSidebar() {
+  sidebarEl.classList.add('mobile-open');
+  overlayEl.classList.add('active');
+}
+function closeMobileSidebar() {
+  sidebarEl.classList.remove('mobile-open');
+  overlayEl.classList.remove('active');
+}
+
+document.getElementById('menuBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (sidebarEl.classList.contains('mobile-open')) {
+    closeMobileSidebar();
+  } else {
+    openMobileSidebar();
+  }
 });
-document.addEventListener('click', (e) => {
-  const sidebar = document.getElementById('sidebar');
-  const menuBtn = document.getElementById('menuBtn');
-  if (sidebar.classList.contains('mobile-open') &&
-      !sidebar.contains(e.target) && e.target !== menuBtn && !menuBtn.contains(e.target)) {
-    sidebar.classList.remove('mobile-open');
+
+document.getElementById('sidebarCloseBtn')?.addEventListener('click', closeMobileSidebar);
+overlayEl?.addEventListener('click', closeMobileSidebar);
+
+// ============================================================
+//  PANDUAN BUKA DI HANDPHONE MODAL
+// ============================================================
+const modalPhoneGuide = document.getElementById('modalPhoneGuide');
+function showPhoneGuide() {
+  if (modalPhoneGuide) modalPhoneGuide.classList.add('open');
+  closeMobileSidebar();
+}
+function hidePhoneGuide() {
+  if (modalPhoneGuide) modalPhoneGuide.classList.remove('open');
+}
+
+document.getElementById('btnOpenPhoneGuide')?.addEventListener('click', showPhoneGuide);
+document.getElementById('topbarPhoneBtn')?.addEventListener('click', showPhoneGuide);
+document.getElementById('closePhoneModal')?.addEventListener('click', hidePhoneGuide);
+document.getElementById('btnDonePhoneModal')?.addEventListener('click', hidePhoneGuide);
+
+modalPhoneGuide?.addEventListener('click', (e) => {
+  if (e.target === modalPhoneGuide) hidePhoneGuide();
+});
+
+// Guide tabs switch
+document.querySelectorAll('.guide-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.guide-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const guideType = tab.dataset.guide;
+    const onlinePane = document.getElementById('guide-online');
+    const wifiPane = document.getElementById('guide-wifi');
+    if (guideType === 'online') {
+      onlinePane.style.display = 'block';
+      wifiPane.style.display = 'none';
+    } else {
+      onlinePane.style.display = 'none';
+      wifiPane.style.display = 'block';
+    }
+  });
+});
+
+// Copy GitHub URL button
+document.getElementById('btnCopyGhUrl')?.addEventListener('click', () => {
+  const urlInput = document.getElementById('ghUrlInput');
+  if (urlInput) {
+    urlInput.select();
+    navigator.clipboard.writeText(urlInput.value).then(() => {
+      showToast('Link GitHub Pages berhasil disalin!', 'success');
+    }).catch(() => {
+      showToast('Silakan salin manual: ' + urlInput.value, 'info');
+    });
   }
 });
 

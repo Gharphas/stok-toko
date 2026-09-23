@@ -2,9 +2,14 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>StockMaster — Aplikasi Hitung Stok Toko</title>
   <meta name="description" content="Aplikasi manajemen stok barang toko: pemasukan, pengeluaran, dan hitung stok real-time." />
+  <meta name="theme-color" content="#4f46e5" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="StockMaster" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -14,6 +19,9 @@
 <body>
   <!-- Toast Notification -->
   <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+  <!-- Sidebar Overlay for Mobile -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
@@ -25,6 +33,9 @@
           <span class="logo-sub">Manajemen Stok Toko</span>
         </div>
       </div>
+      <button class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="Tutup Menu">
+        <i class="ri-close-line"></i>
+      </button>
     </div>
     <nav class="sidebar-nav">
       <a href="#" class="nav-item active" data-tab="dashboard" id="nav-dashboard">
@@ -55,6 +66,10 @@
       </a>
     </nav>
     <div class="sidebar-footer">
+      <button class="phone-link-btn" id="btnOpenPhoneGuide" title="Buka di HP">
+        <i class="ri-smartphone-line"></i>
+        <span>Buka di Handphone</span>
+      </button>
       <button class="theme-toggle-btn" id="themeToggle" title="Ganti Tema">
         <i class="ri-moon-line" id="themeIcon"></i>
         <span id="themeLabel">Mode Gelap</span>
@@ -73,6 +88,13 @@
         <h1 class="topbar-title" id="topbarTitle">Dashboard</h1>
       </div>
       <div class="topbar-right">
+        <button class="topbar-phone-btn" id="topbarPhoneBtn" title="Buka di Handphone" aria-label="Buka di Handphone">
+          <i class="ri-smartphone-line"></i>
+          <span class="hp-badge">HP</span>
+        </button>
+        <button class="theme-quick-btn" id="themeQuickBtn" title="Ganti Tema" aria-label="Ganti Tema">
+          <i class="ri-moon-line" id="themeQuickIcon"></i>
+        </button>
         <div class="search-box">
           <i class="ri-search-line"></i>
           <input type="text" id="globalSearch" placeholder="Cari barang..." autocomplete="off" />
@@ -472,6 +494,95 @@
       </div>
     </div>
   </div>
+
+  <!-- MODAL: PANDUAN BUKA DI HANDPHONE -->
+  <div class="modal-overlay" id="modalPhoneGuide">
+    <div class="modal-box modal-guide">
+      <div class="modal-header">
+        <h3><i class="ri-smartphone-line"></i> Buka Aplikasi di Handphone</h3>
+        <button class="modal-close" id="closePhoneModal" aria-label="Tutup"><i class="ri-close-line"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="guide-tabs">
+          <button type="button" class="guide-tab active" data-guide="online"><i class="ri-global-line"></i> 1. Link Online (GitHub)</button>
+          <button type="button" class="guide-tab" data-guide="wifi"><i class="ri-wifi-line"></i> 2. Wi-Fi Lokal (Offline)</button>
+        </div>
+
+        <div class="guide-pane active" id="guide-online">
+          <div class="guide-badge-box">
+            <span class="badge badge-aman">Paling Praktis</span>
+            <p>Bisa dibuka langsung dari browser smartphone kapan saja tanpa menyalakan laptop terus-menerus.</p>
+          </div>
+          <ol class="guide-steps">
+            <li>
+              <strong>Buka Browser di Handphone</strong> (Google Chrome / Safari).
+            </li>
+            <li>
+              <strong>Ketik URL GitHub Pages:</strong>
+              <div class="url-copy-box">
+                <input type="text" readonly value="https://gharphas.github.io/stok-toko/" id="ghUrlInput" />
+                <button type="button" class="btn btn-primary btn-sm" id="btnCopyGhUrl"><i class="ri-file-copy-line"></i> Salin Link</button>
+              </div>
+              <small class="guide-hint">*Di GitHub Repo &rarr; Settings &rarr; Pages &rarr; Source: pilih Branch <code>main</code> &rarr; Save.</small>
+            </li>
+            <li>
+              <strong>Tambahkan ke Layar Utama (Icon App di HP):</strong>
+              <div class="pwa-tip">
+                <p>🤖 <strong>Chrome Android:</strong> Tap titik tiga (&vellip;) &rarr; pilih <strong>"Tambahkan ke Layar Utama" / "Install Aplikasi"</strong>.</p>
+                <p>🍎 <strong>Safari iPhone:</strong> Tap tombol Share (<i class="ri-share-box-line"></i>) &rarr; pilih <strong>"Add to Home Screen"</strong>.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="guide-pane" id="guide-wifi" style="display:none;">
+          <div class="guide-badge-box">
+            <span class="badge badge-menipis">Jaringan Wi-Fi Sama</span>
+            <p>Akses langsung ke server di laptop saat HP dan laptop tersambung di Wi-Fi yang sama.</p>
+          </div>
+          <ol class="guide-steps">
+            <li>Pastikan HP & Laptop terhubung ke <strong>Wi-Fi yang sama</strong>.</li>
+            <li>Di laptop, jalankan server lokal:
+              <div class="code-box">node serve.js</div>
+            </li>
+            <li>Buka browser HP dan ketik: <code>http://192.168.1.11:5500</code></li>
+          </ol>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-primary" id="btnDonePhoneModal">Tutup Panduan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== BOTTOM NAVIGATION (MOBILE) ===================== -->
+  <nav class="bottom-nav" id="bottomNav">
+    <button type="button" class="bottom-nav-item active" data-tab="dashboard" id="bnav-dashboard">
+      <i class="ri-dashboard-3-line"></i>
+      <span>Dashboard</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-tab="produk" id="bnav-produk">
+      <i class="ri-archive-line"></i>
+      <span>Katalog</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-tab="masuk" id="bnav-masuk">
+      <i class="ri-arrow-down-circle-line"></i>
+      <span>Masuk</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-tab="keluar" id="bnav-keluar">
+      <i class="ri-arrow-up-circle-line"></i>
+      <span>Keluar</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-tab="opname" id="bnav-opname">
+      <i class="ri-calculator-line"></i>
+      <span>Hitung</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-tab="riwayat" id="bnav-riwayat">
+      <i class="ri-history-line"></i>
+      <span>Mutasi</span>
+    </button>
+  </nav>
 
   <script src="app.js"></script>
 </body>
