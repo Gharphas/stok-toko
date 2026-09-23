@@ -5,26 +5,320 @@
  */
 
 // ============================================================
-//  DATA STORE (localStorage-backed)
+//  DATABASE MANAGER (Server REST API + Local Fallback)
 // ============================================================
 const DB = {
   PRODUCTS: 'sm_products',
   TRANSACTIONS: 'sm_transactions',
   OPNAMES: 'sm_opnames',
+  _isServer: false,
+  _cache: { products: [], transactions: [], opnames: [] },
 
-  get(key) {
-    try { return JSON.parse(localStorage.getItem(key)) || []; }
-    catch { return []; }
+  async init() {
+    // 1. Muat dari localStorage terlebih dahulu (instant UI render)
+    try {
+      this._cache.products = JSON.parse(localStorage.getItem(this.PRODUCTS)) || [];
+      this._cache.transactions = JSON.parse(localStorage.getItem(this.TRANSACTIONS)) || [];
+      this._cache.opnames = JSON.parse(localStorage.getItem(this.OPNAMES)) || [];
+    } catch {
+      this._cache = { products: [], transactions: [], opnames: [] };
+    }
+
+    // 2. Hubungkan ke database server (data/db.json)
+    await this.fetchFromServer();
   },
-  set(key, val) {
-    localStorage.setItem(key, JSON.stringify(val));
+
+  async fetchFromServer() {
+    try {
+      const res = await fetch('/api/data', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          this._cache.products = Array.isArray(json.data.products) ? json.data.products : [];
+          this._cache.transactions = Array.isArray(json.data.transactions) ? json.data.transactions : [];
+          this._cache.opnames = Array.isArray(json.data.opnames) ? json.data.opnames : [];
+          this._isServer = true;
+          this._persistLocal();
+          this.updateStatusPill(true);
+          return true;
+        }
+      }
+    } catch (err) {
+      // Server offline / mode static
+    }
+    this._isServer = false;
+    this.updateStatusPill(false);
+    return false;
   },
-  getProducts()     { return this.get(this.PRODUCTS); },
-  getTransactions() { return this.get(this.TRANSACTIONS); },
-  getOpnames()      { return this.get(this.OPNAMES); },
-  saveProducts(d)     { this.set(this.PRODUCTS, d); },
-  saveTransactions(d) { this.set(this.TRANSACTIONS, d); },
-  saveOpnames(d)      { this.set(this.OPNAMES, d); },
+
+  _persistLocal() {
+    localStorage.setItem(this.PRODUCTS, JSON.stringify(this._cache.products));
+    localStorage.setItem(this.TRANSACTIONS, JSON.stringify(this._cache.transactions));
+    localStorage.setItem(this.OPNAMES, JSON.stringify(this._cache.opnames));
+  },
+
+  getProducts()     { return this._cache.products; },
+  getTransactions() { return this._cache.transactions; },
+  getOpnames()      { return this._cache.opnames; },
+
+  async saveProduct(data) {
+    if (this._isServer) {
+      try {
+        const res = await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const json = await res.json();
+        if (json.success && json.data) {
+          this._cache = json.data;
+          this._persistLocal();
+          return json;
+        }
+      } catch (err) {
+        console.warn('Simpan offline:', err);
+      }
+    }
+
+    // Fallback lokal
+    const idx = this._cache.products.findIndex(p => p.id === data.id);
+    if (idx > -1) {
+      data.stok = this._cache.products[idx].stok;
+      data.updatedAt = new Date().toISOString();
+      this._cache.products[idx] = { ...this._cache.products[idx], ...data };
+    } else {
+      if (!data.id) data.id = genId();
+      data.createdAt = new Date().toISOString();
+      data.updatedAt = new Date().toISOString();
+      this._cache.products.push(data);
+    }
+    this._persistLocal();
+    return { success: true, product: data };
+  },
+
+  async deleteProduct(id) {
+    if (this._isServer) {
+      try {
+        const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+        const json = await res.json();
+        if (json.success && json.data) {
+          this._cache = json.data;
+          this._persistLocal();
+          return json;
+        }
+      } catch (err) {}
+    }
+
+    this._cache.products = this._cache.products.filter(p => p.id !== id);
+    this._persistLocal();
+    return { success: true };
+  },
+
+  async catatMasuk(payload) {
+    if (this._isServer) {
+      try {
+        const res = await fetch('/api/masuk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success && json.data) {
+          this._cache = json.data;
+          this._persistLocal();
+          return json;
+        } else {
+          throw new Error(json.message || 'Gagal menyimpan barang masuk');
+        }
+      } catch (err) {
+        if (!err.message.includes('Gagal')) throw err;
+      }
+    }
+
+    // Fallback offline
+    const idx = this._cache.products.findIndex(p => p.id === payload.produkId);
+    if (idx === -1) throw new Error('Barang tidak ditemukan');
+
+    const prod = this._cache.products[idx];
+    const qty = Number(payload.jumlah) || 0;
+    prod.stok = (Number(prod.stok) || 0) + qty;
+    if (payload.hargaBeli) prod.hargaBeli = Number(payload.hargaBeli);
+    prod.updatedAt = new Date().toISOString();
+
+    const tx = {
+      id: genId(),
+      jenis: 'masuk',
+      produkId: prod.id,
+      namaProduk: prod.nama,
+      satuan: prod.satuan,
+      jumlah: qty,
+      hargaSatuan: Number(payload.hargaBeli) || prod.hargaBeli,
+      total: qty * (Number(payload.hargaBeli) || prod.hargaBeli),
+      supplier: payload.supplier || '',
+      nota: payload.nota || '',
+      keterangan: payload.keterangan || '',
+      tgl: new Date().toISOString()
+    };
+    this._cache.transactions.unshift(tx);
+    this._persistLocal();
+    return { success: true, product: prod, transaction: tx };
+  },
+
+  async catatKeluar(payload) {
+    if (this._isServer) {
+      try {
+        const res = await fetch('/api/keluar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success && json.data) {
+          this._cache = json.data;
+          this._persistLocal();
+          return json;
+        } else {
+          throw new Error(json.message || 'Gagal menyimpan barang keluar');
+        }
+      } catch (err) {
+        if (err.message && err.message.includes('Stok tidak mencukupi')) throw err;
+      }
+    }
+
+    // Fallback offline
+    const idx = this._cache.products.findIndex(p => p.id === payload.produkId);
+    if (idx === -1) throw new Error('Barang tidak ditemukan');
+
+    const prod = this._cache.products[idx];
+    const stokSekarang = Number(prod.stok) || 0;
+    const qty = Number(payload.jumlah) || 0;
+    if (qty > stokSekarang) {
+      throw new Error(`Stok tidak mencukupi! Tersedia: ${stokSekarang} ${prod.satuan}`);
+    }
+
+    prod.stok = stokSekarang - qty;
+    prod.updatedAt = new Date().toISOString();
+
+    const tx = {
+      id: genId(),
+      jenis: 'keluar',
+      subJenis: payload.jenisKeluar || 'penjualan',
+      produkId: prod.id,
+      namaProduk: prod.nama,
+      satuan: prod.satuan,
+      jumlah: qty,
+      hargaSatuan: prod.hargaJual,
+      total: qty * prod.hargaJual,
+      keterangan: `[${(payload.jenisKeluar || 'penjualan').toUpperCase()}] ${payload.keterangan || ''}`.trim(),
+      tgl: new Date().toISOString()
+    };
+    this._cache.transactions.unshift(tx);
+    this._persistLocal();
+    return { success: true, product: prod, transaction: tx };
+  },
+
+  async catatOpname(changes) {
+    if (this._isServer) {
+      try {
+        const res = await fetch('/api/opname', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ changes })
+        });
+        const json = await res.json();
+        if (json.success && json.data) {
+          this._cache = json.data;
+          this._persistLocal();
+          return json;
+        }
+      } catch (err) {}
+    }
+
+    // Fallback offline
+    changes.forEach(c => {
+      const idx = this._cache.products.findIndex(p => p.id === c.id);
+      if (idx > -1) {
+        this._cache.products[idx].stok = Number(c.stokFisik);
+        this._cache.products[idx].updatedAt = new Date().toISOString();
+        this._cache.transactions.unshift({
+          id: genId(),
+          jenis: 'opname',
+          produkId: c.id,
+          namaProduk: c.nama,
+          satuan: c.satuan,
+          jumlah: Math.abs(c.selisih),
+          keterangan: `Opname: sistem ${c.stokSistem} → fisik ${c.stokFisik} (${c.selisih >= 0 ? '+' : ''}${c.selisih}) ${c.keterangan || ''}`.trim(),
+          tgl: new Date().toISOString()
+        });
+      }
+    });
+    this._cache.opnames.unshift({ id: genId(), tgl: new Date().toISOString(), items: changes });
+    this._persistLocal();
+    return { success: true };
+  },
+
+  async clearTransactions() {
+    if (this._isServer) {
+      try {
+        const res = await fetch('/api/transactions', { method: 'DELETE' });
+        const json = await res.json();
+        if (json.success && json.data) {
+          this._cache = json.data;
+          this._persistLocal();
+          return json;
+        }
+      } catch (err) {}
+    }
+    this._cache.transactions = [];
+    this._cache.opnames = [];
+    this._persistLocal();
+    return { success: true };
+  },
+
+  async restoreFull(fullData) {
+    if (this._isServer) {
+      try {
+        const res = await fetch('/api/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fullData)
+        });
+        const json = await res.json();
+        if (json.success && json.data) {
+          this._cache = json.data;
+          this._persistLocal();
+          return json;
+        }
+      } catch (err) {}
+    }
+    this._cache.products = Array.isArray(fullData.products) ? fullData.products : [];
+    this._cache.transactions = Array.isArray(fullData.transactions) ? fullData.transactions : [];
+    this._cache.opnames = Array.isArray(fullData.opnames) ? fullData.opnames : [];
+    this._persistLocal();
+    return { success: true };
+  },
+
+  updateStatusPill(isOnline) {
+    const pill = document.getElementById('dbStatusPill');
+    const text = document.getElementById('dbStatusText');
+    const badge = document.getElementById('dbModeBadge');
+    if (!pill) return;
+    if (isOnline) {
+      pill.className = 'db-status-pill';
+      text.textContent = 'Database Aktif (Real-time)';
+      if (badge) {
+        badge.className = 'badge badge-aman';
+        badge.innerHTML = '<i class="ri-checkbox-circle-fill"></i> Database Server (db.json)';
+      }
+    } else {
+      pill.className = 'db-status-pill offline';
+      text.textContent = 'Mode Offline (Browser Storage)';
+      if (badge) {
+        badge.className = 'badge badge-menipis';
+        badge.innerHTML = '<i class="ri-alert-fill"></i> Mode Offline';
+      }
+    }
+  }
 };
 
 // ============================================================
@@ -428,12 +722,11 @@ document.getElementById('modalProduk').addEventListener('click', (e) => {
 });
 
 // Save product
-document.getElementById('formProduk').addEventListener('submit', (e) => {
+document.getElementById('formProduk').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const products = DB.getProducts();
   const id = document.getElementById('produkId').value;
   const data = {
-    id: id || genId(),
+    id: id || '',
     nama:       document.getElementById('produkNama').value.trim(),
     kategori:   document.getElementById('produkKategori').value.trim(),
     satuan:     document.getElementById('produkSatuan').value,
@@ -442,23 +735,12 @@ document.getElementById('formProduk').addEventListener('submit', (e) => {
     hargaBeli:  Number(document.getElementById('produkHargaBeli').value) || 0,
     hargaJual:  Number(document.getElementById('produkHargaJual').value) || 0,
     deskripsi:  document.getElementById('produkDeskripsi').value.trim(),
-    updatedAt:  new Date().toISOString(),
   };
-  if (!id) data.createdAt = new Date().toISOString();
 
-  if (id) {
-    const idx = products.findIndex(p => p.id === id);
-    if (idx > -1) {
-      data.stok = products[idx].stok; // preserve stock
-      products[idx] = { ...products[idx], ...data };
-    }
-  } else {
-    products.push(data);
-  }
-  DB.saveProducts(products);
+  await DB.saveProduct(data);
   document.getElementById('modalProduk').classList.remove('open');
   renderTableProduk();
-  showToast(id ? 'Barang berhasil diperbarui!' : 'Barang baru berhasil ditambahkan!', 'success');
+  showToast(id ? 'Barang berhasil diperbarui di database!' : 'Barang baru berhasil disimpan ke database!', 'success');
 });
 
 function openEditProduk(id) {
@@ -482,10 +764,10 @@ function openEditProduk(id) {
 function hapusProduk(id) {
   const p = DB.getProducts().find(x => x.id === id);
   if (!p) return;
-  showConfirm('Hapus Barang', `Hapus "${p.nama}" dari katalog? Data stok akan hilang permanen.`, () => {
-    DB.saveProducts(DB.getProducts().filter(x => x.id !== id));
+  showConfirm('Hapus Barang', `Hapus "${p.nama}" dari katalog? Data stok akan terhapus dari database.`, async () => {
+    await DB.deleteProduct(id);
     renderTableProduk();
-    showToast('Barang berhasil dihapus.', 'warning');
+    showToast('Barang berhasil dihapus dari database.', 'warning');
   });
 }
 
@@ -526,7 +808,7 @@ function updateMasukPreview() {
   }
 }
 
-document.getElementById('formMasuk').addEventListener('submit', (e) => {
+document.getElementById('formMasuk').addEventListener('submit', async (e) => {
   e.preventDefault();
   const produkId  = document.getElementById('masukProduk').value;
   const jumlah    = Number(document.getElementById('masukJumlah').value);
@@ -538,37 +820,16 @@ document.getElementById('formMasuk').addEventListener('submit', (e) => {
   if (!produkId) { showToast('Pilih barang terlebih dahulu.', 'error'); return; }
   if (!jumlah || jumlah < 1) { showToast('Jumlah harus lebih dari 0.', 'error'); return; }
 
-  const products = DB.getProducts();
-  const idx = products.findIndex(p => p.id === produkId);
-  if (idx === -1) { showToast('Barang tidak ditemukan.', 'error'); return; }
-
-  const p = products[idx];
-  products[idx].stok = (Number(p.stok) || 0) + jumlah;
-  if (hargaBeli) products[idx].hargaBeli = hargaBeli;
-  products[idx].updatedAt = new Date().toISOString();
-  DB.saveProducts(products);
-
-  // Log transaction
-  const txs = DB.getTransactions();
-  txs.unshift({
-    id: genId(),
-    jenis: 'masuk',
-    produkId,
-    namaProduk: p.nama,
-    satuan: p.satuan,
-    jumlah,
-    hargaSatuan: hargaBeli,
-    total: jumlah * hargaBeli,
-    supplier, nota, keterangan: ket,
-    tgl: new Date().toISOString(),
-  });
-  DB.saveTransactions(txs);
-
-  document.getElementById('formMasuk').reset();
-  document.getElementById('masukPreview').style.display = 'none';
-  populateProdukSelects();
-  renderListMasuk();
-  showToast(`+${jumlah} ${p.satuan} "${p.nama}" berhasil dicatat sebagai barang masuk!`, 'success');
+  try {
+    const res = await DB.catatMasuk({ produkId, jumlah, hargaBeli, supplier, nota, keterangan: ket });
+    document.getElementById('formMasuk').reset();
+    document.getElementById('masukPreview').style.display = 'none';
+    populateProdukSelects();
+    renderListMasuk();
+    showToast(res.message || `+${jumlah} barang masuk berhasil disimpan permanen ke database!`, 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 });
 
 function renderListMasuk() {
@@ -619,7 +880,7 @@ function updateKeluarPreview() {
   }
 }
 
-document.getElementById('formKeluar').addEventListener('submit', (e) => {
+document.getElementById('formKeluar').addEventListener('submit', async (e) => {
   e.preventDefault();
   const produkId = document.getElementById('keluarProduk').value;
   const jumlah   = Number(document.getElementById('keluarJumlah').value);
@@ -629,43 +890,18 @@ document.getElementById('formKeluar').addEventListener('submit', (e) => {
   if (!produkId) { showToast('Pilih barang terlebih dahulu.', 'error'); return; }
   if (!jumlah || jumlah < 1) { showToast('Jumlah harus lebih dari 0.', 'error'); return; }
 
-  const products = DB.getProducts();
-  const idx = products.findIndex(p => p.id === produkId);
-  if (idx === -1) { showToast('Barang tidak ditemukan.', 'error'); return; }
-
-  const p = products[idx];
-  if (jumlah > Number(p.stok)) {
-    showToast(`Stok tidak cukup! Stok tersedia: ${p.stok} ${p.satuan}.`, 'error');
-    return;
+  try {
+    const res = await DB.catatKeluar({ produkId, jumlah, jenisKeluar: jenis, keterangan: ket });
+    document.getElementById('formKeluar').reset();
+    document.getElementById('keluarStokInfo').textContent = 'Pilih barang terlebih dahulu';
+    document.getElementById('keluarStokInfo').style.color = '';
+    document.getElementById('keluarPreview').style.display = 'none';
+    populateProdukSelects();
+    renderListKeluar();
+    showToast(res.message || `-${jumlah} barang keluar berhasil disimpan ke database!`, 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
   }
-
-  products[idx].stok = Number(p.stok) - jumlah;
-  products[idx].updatedAt = new Date().toISOString();
-  DB.saveProducts(products);
-
-  const txs = DB.getTransactions();
-  txs.unshift({
-    id: genId(),
-    jenis: 'keluar',
-    jenisKeluar: jenis,
-    produkId,
-    namaProduk: p.nama,
-    satuan: p.satuan,
-    jumlah,
-    hargaSatuan: p.hargaJual,
-    total: jumlah * p.hargaJual,
-    keterangan: ket,
-    tgl: new Date().toISOString(),
-  });
-  DB.saveTransactions(txs);
-
-  document.getElementById('formKeluar').reset();
-  document.getElementById('keluarStokInfo').textContent = 'Pilih barang terlebih dahulu';
-  document.getElementById('keluarStokInfo').style.color = '';
-  document.getElementById('keluarPreview').style.display = 'none';
-  populateProdukSelects();
-  renderListKeluar();
-  showToast(`-${jumlah} ${p.satuan} "${p.nama}" berhasil dicatat sebagai barang keluar!`, 'success');
 });
 
 function renderListKeluar() {
@@ -769,34 +1005,10 @@ document.getElementById('btnSesuaikanOpname').addEventListener('click', () => {
   showConfirm(
     'Sesuaikan Stok Sistem',
     `Akan menyesuaikan stok untuk ${changes.length} barang berdasarkan hasil hitung fisik. Lanjutkan?`,
-    () => {
-      // Update stocks
-      changes.forEach(c => {
-        const idx = products.findIndex(p => p.id === c.id);
-        if (idx > -1) { products[idx].stok = c.stokFisik; products[idx].updatedAt = new Date().toISOString(); }
-      });
-      DB.saveProducts(products);
-
-      // Log opname
-      const opnames = DB.getOpnames();
-      opnames.unshift({ id: genId(), tgl: new Date().toISOString(), items: changes });
-      DB.saveOpnames(opnames);
-
-      // Log each change as transaction
-      const txs = DB.getTransactions();
-      changes.forEach(c => {
-        txs.unshift({
-          id: genId(), jenis: 'opname', produkId: c.id,
-          namaProduk: c.nama, satuan: c.satuan,
-          jumlah: Math.abs(c.selisih),
-          keterangan: `Opname: sistem ${c.stokSistem} → fisik ${c.stokFisik} (${c.selisih >= 0 ? '+' : ''}${c.selisih}) ${c.keterangan}`,
-          tgl: new Date().toISOString(),
-        });
-      });
-      DB.saveTransactions(txs);
-
+    async () => {
+      await DB.catatOpname(changes);
       renderOpname();
-      showToast(`Stok ${changes.length} barang berhasil disesuaikan!`, 'success');
+      showToast(`Stok ${changes.length} barang berhasil disesuaikan dan disimpan ke database!`, 'success');
     }
   );
 });
@@ -869,31 +1081,140 @@ function renderRiwayat() {
 document.getElementById('filterRiwayatJenis').addEventListener('change', renderRiwayat);
 document.getElementById('filterRiwayatTgl').addEventListener('change', renderRiwayat);
 document.getElementById('btnClearRiwayat').addEventListener('click', () => {
-  showConfirm('Hapus Semua Riwayat', 'Ini akan menghapus seluruh riwayat mutasi. Data stok tidak berubah.', () => {
-    DB.saveTransactions([]);
-    DB.saveOpnames([]);
+  showConfirm('Hapus Semua Riwayat', 'Ini akan menghapus seluruh riwayat mutasi di database. Data stok tidak berubah.', async () => {
+    await DB.clearTransactions();
     renderRiwayat();
-    showToast('Riwayat mutasi berhasil dihapus.', 'warning');
+    showToast('Riwayat mutasi berhasil dihapus dari database.', 'warning');
   });
 });
 
 // ============================================================
-//  SEED DATA (first run)
+//  KELOLA DATABASE & BACKUP MODAL
 // ============================================================
-function seedDefaultData() {
-  if (DB.getProducts().length) return;
-  const seeds = [
-    { id: genId(), nama: 'Beras Premium 5Kg', kategori: 'Sembako', satuan: 'Karung', stok: 50, minStok: 10, hargaBeli: 62000, hargaJual: 70000 },
-    { id: genId(), nama: 'Minyak Goreng 1L', kategori: 'Sembako', satuan: 'Botol', stok: 80, minStok: 20, hargaBeli: 14000, hargaJual: 16000 },
-    { id: genId(), nama: 'Gula Pasir 1Kg', kategori: 'Sembako', satuan: 'Pcs', stok: 60, minStok: 15, hargaBeli: 13000, hargaJual: 15000 },
-    { id: genId(), nama: 'Kopi Kapal Api 165gr', kategori: 'Minuman', satuan: 'Pack', stok: 40, minStok: 10, hargaBeli: 10000, hargaJual: 12500 },
-    { id: genId(), nama: 'Sabun Mandi Lifebuoy', kategori: 'Kebersihan', satuan: 'Pcs', stok: 5, minStok: 10, hargaBeli: 3500, hargaJual: 5000 },
-    { id: genId(), nama: 'Indomie Goreng', kategori: 'Makanan', satuan: 'Pcs', stok: 0, minStok: 20, hargaBeli: 2800, hargaJual: 3500 },
-    { id: genId(), nama: 'Aqua Galon 19L', kategori: 'Minuman', satuan: 'Galon', stok: 20, minStok: 5, hargaBeli: 18000, hargaJual: 22000 },
-    { id: genId(), nama: 'Detergen Rinso 900gr', kategori: 'Kebersihan', satuan: 'Pack', stok: 25, minStok: 8, hargaBeli: 21000, hargaJual: 25000 },
-  ].map(p => ({ ...p, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), deskripsi: '' }));
-  DB.saveProducts(seeds);
+const modalDbBackup = document.getElementById('modalDbBackup');
+function showDbModal() {
+  if (modalDbBackup) modalDbBackup.classList.add('open');
+  closeMobileSidebar();
 }
+function hideDbModal() {
+  if (modalDbBackup) modalDbBackup.classList.remove('open');
+}
+
+document.getElementById('btnOpenDbBackup')?.addEventListener('click', showDbModal);
+document.getElementById('closeDbModal')?.addEventListener('click', hideDbModal);
+document.getElementById('btnDoneDbModal')?.addEventListener('click', hideDbModal);
+modalDbBackup?.addEventListener('click', (e) => {
+  if (e.target === modalDbBackup) hideDbModal();
+});
+
+// Download backup JSON
+document.getElementById('btnDownloadBackup')?.addEventListener('click', () => {
+  const dbData = {
+    products: DB.getProducts(),
+    transactions: DB.getTransactions(),
+    opnames: DB.getOpnames(),
+    exportedAt: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(dbData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const dStr = new Date().toISOString().split('T')[0];
+  a.href = url;
+  a.download = `backup-stockmaster-${dStr}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('File backup database berhasil didownload!', 'success');
+});
+
+// Restore backup from JSON
+document.getElementById('fileRestoreDb')?.addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async function(evt) {
+    try {
+      const data = JSON.parse(evt.target.result);
+      if (!Array.isArray(data.products)) throw new Error('Format file backup tidak sesuai');
+      showConfirm('Pulihkan Database', `Pulihkan ${data.products.length} barang dan ${(data.transactions || []).length} riwayat dari file backup? Data saat ini akan ditimpa.`, async () => {
+        await DB.restoreFull(data);
+        hideDbModal();
+        renderDashboard();
+        renderTableProduk();
+        populateProdukSelects();
+        showToast('Database berhasil dipulihkan dari file backup!', 'success');
+      });
+    } catch (err) {
+      showToast('Gagal memulihkan database: ' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file);
+  this.value = '';
+});
+
+// Muat data contoh (manual pilihan pengguna)
+document.getElementById('btnLoadSampleData')?.addEventListener('click', () => {
+  showConfirm('Muat Data Contoh', 'Tambahkan 8 produk sembako dan retail contoh ke database Anda?', async () => {
+    const seeds = [
+      { id: genId(), nama: 'Beras Premium 5Kg', kategori: 'Sembako', satuan: 'Karung', stok: 50, minStok: 10, hargaBeli: 62000, hargaJual: 70000, deskripsi: '' },
+      { id: genId(), nama: 'Minyak Goreng 1L', kategori: 'Sembako', satuan: 'Botol', stok: 80, minStok: 20, hargaBeli: 14000, hargaJual: 16000, deskripsi: '' },
+      { id: genId(), nama: 'Gula Pasir 1Kg', kategori: 'Sembako', satuan: 'Pcs', stok: 60, minStok: 15, hargaBeli: 13000, hargaJual: 15000, deskripsi: '' },
+      { id: genId(), nama: 'Kopi Kapal Api 165gr', kategori: 'Minuman', satuan: 'Pack', stok: 40, minStok: 10, hargaBeli: 10000, hargaJual: 12500, deskripsi: '' },
+      { id: genId(), nama: 'Sabun Mandi Lifebuoy', kategori: 'Kebersihan', satuan: 'Pcs', stok: 12, minStok: 10, hargaBeli: 3500, hargaJual: 5000, deskripsi: '' },
+      { id: genId(), nama: 'Indomie Goreng', kategori: 'Makanan', satuan: 'Pcs', stok: 48, minStok: 20, hargaBeli: 2800, hargaJual: 3500, deskripsi: '' },
+      { id: genId(), nama: 'Aqua Galon 19L', kategori: 'Minuman', satuan: 'Galon', stok: 20, minStok: 5, hargaBeli: 18000, hargaJual: 22000, deskripsi: '' },
+      { id: genId(), nama: 'Detergen Rinso 900gr', kategori: 'Kebersihan', satuan: 'Pack', stok: 25, minStok: 8, hargaBeli: 21000, hargaJual: 25000, deskripsi: '' },
+    ];
+    for (const p of seeds) {
+      await DB.saveProduct(p);
+    }
+    hideDbModal();
+    renderDashboard();
+    renderTableProduk();
+    populateProdukSelects();
+    showToast('8 data contoh berhasil dimasukkan ke database!', 'success');
+  });
+});
+
+// Kosongkan database
+document.getElementById('btnResetAllData')?.addEventListener('click', () => {
+  showConfirm('Kosongkan Seluruh Database', 'PERINGATAN: Semua data barang dan mutasi akan dihapus permanen. Lanjutkan?', async () => {
+    await DB.restoreFull({ products: [], transactions: [], opnames: [] });
+    hideDbModal();
+    renderDashboard();
+    renderTableProduk();
+    populateProdukSelects();
+    showToast('Seluruh database telah dikosongkan.', 'warning');
+  });
+});
+
+// ============================================================
+//  AUTO-SYNC BACKGROUND (Sync Multi-device Laptop & HP)
+// ============================================================
+setInterval(async () => {
+  if (DB._isServer && document.visibilityState === 'visible') {
+    const prevTxs = DB.getTransactions().length;
+    const prevProds = JSON.stringify(DB.getProducts());
+    const ok = await DB.fetchFromServer();
+    if (ok) {
+      const curTxs = DB.getTransactions().length;
+      const curProds = JSON.stringify(DB.getProducts());
+      if (prevTxs !== curTxs || prevProds !== curProds) {
+        // Terjadi update dari HP atau perangkat lain!
+        const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+        renderByTab(activeTab);
+      }
+    }
+  }
+}, 3500);
+
+window.addEventListener('focus', () => {
+  if (DB._isServer) {
+    DB.fetchFromServer().then(() => {
+      const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+      renderByTab(activeTab);
+    });
+  }
+});
 
 // ============================================================
 //  INIT APP
@@ -903,5 +1224,8 @@ window.hapusProduk    = hapusProduk;
 window.updateDiff     = updateDiff;
 window.switchTab      = switchTab;
 
-seedDefaultData();
-switchTab('dashboard');
+async function initApp() {
+  await DB.init();
+  switchTab('dashboard');
+}
+initApp();

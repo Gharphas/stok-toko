@@ -198,7 +198,58 @@ input, select, textarea { font-family: var(--font); }
   font-size: 1.3rem; color: var(--text-2); padding: .35rem;
   border-radius: var(--radius-sm);
 }
+.db-link-btn {
+  width: 100%; display: flex; align-items: center; gap: .6rem;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: .55rem .85rem;
+  color: var(--text-2); font-size: .82rem; font-weight: 500;
+  transition: all .2s;
+}
+.db-link-btn:hover { background: var(--primary-light); color: var(--primary); border-color: var(--primary); }
+
 .topbar-title { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+.db-status-pill {
+  display: inline-flex; align-items: center; gap: .4rem;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 999px; padding: .25rem .65rem;
+  font-size: .72rem; font-weight: 600; color: var(--text-2);
+  transition: all .2s;
+}
+.db-dot {
+  width: 8px; height: 8px; border-radius: 999px;
+  background: var(--green); box-shadow: 0 0 8px rgba(16,185,129,.7);
+  animation: pulse 2s infinite;
+}
+.db-status-pill.offline .db-dot {
+  background: var(--yellow); box-shadow: 0 0 8px rgba(245,158,11,.6);
+}
+@keyframes pulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+.db-info-card {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: .9rem 1rem;
+  margin-bottom: 1rem;
+}
+.db-info-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: .45rem; font-size: .82rem;
+}
+.db-info-label { color: var(--text-3); font-weight: 500; }
+.db-path {
+  font-family: monospace; font-size: .75rem; background: var(--bg);
+  padding: .15rem .4rem; border-radius: 4px; border: 1px solid var(--border);
+}
+.db-info-desc {
+  font-size: .78rem; color: var(--text-2); margin-top: .6rem;
+  line-height: 1.45; border-top: 1px solid var(--border); padding-top: .5rem;
+}
+.backup-action-grid {
+  display: flex; flex-direction: column; gap: .6rem;
+}
+
 .topbar-right { display: flex; align-items: center; gap: .75rem; }
 .topbar-phone-btn {
   display: inline-flex; align-items: center; gap: .35rem;

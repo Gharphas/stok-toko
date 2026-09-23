@@ -1,10 +1,13 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>StockMaster — Aplikasi Hitung Stok Toko</title>
-  <meta name="description" content="Aplikasi manajemen stok barang toko: pemasukan, pengeluaran, dan hitung stok real-time." />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Agung Cell — Aplikasi Hitung Stok Toko</title>
+  <meta name="description"
+    content="Aplikasi manajemen stok barang toko: pemasukan, pengeluaran, dan hitung stok real-time." />
   <meta name="theme-color" content="#4f46e5" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -12,10 +15,12 @@
   <meta name="apple-mobile-web-app-title" content="StockMaster" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
   <!-- Toast Notification -->
   <div id="toast" class="toast" role="alert" aria-live="polite"></div>
@@ -29,7 +34,7 @@
       <div class="logo">
         <div class="logo-icon"><i class="ri-store-3-fill"></i></div>
         <div class="logo-text">
-          <span class="logo-title">StockMaster</span>
+          <span class="logo-title">Agung Cell</span>
           <span class="logo-sub">Manajemen Stok Toko</span>
         </div>
       </div>
@@ -70,6 +75,10 @@
         <i class="ri-smartphone-line"></i>
         <span>Buka di Handphone</span>
       </button>
+      <button class="db-link-btn" id="btnOpenDbBackup" title="Kelola Database & Backup">
+        <i class="ri-database-2-line"></i>
+        <span>Kelola Database</span>
+      </button>
       <button class="theme-toggle-btn" id="themeToggle" title="Ganti Tema">
         <i class="ri-moon-line" id="themeIcon"></i>
         <span id="themeLabel">Mode Gelap</span>
@@ -86,6 +95,10 @@
           <i class="ri-menu-3-line"></i>
         </button>
         <h1 class="topbar-title" id="topbarTitle">Dashboard</h1>
+        <div class="db-status-pill" id="dbStatusPill" title="Status Sinkronisasi Database">
+          <span class="db-dot"></span>
+          <span id="dbStatusText">Menyambungkan...</span>
+        </div>
       </div>
       <div class="topbar-right">
         <button class="topbar-phone-btn" id="topbarPhoneBtn" title="Buka di Handphone" aria-label="Buka di Handphone">
@@ -151,7 +164,9 @@
               <button class="btn btn-ghost btn-sm" onclick="switchTab('riwayat')">Lihat Semua</button>
             </div>
             <div class="card-body" id="dashRecentList">
-              <div class="empty-state"><i class="ri-inbox-2-line"></i><p>Belum ada transaksi</p></div>
+              <div class="empty-state"><i class="ri-inbox-2-line"></i>
+                <p>Belum ada transaksi</p>
+              </div>
             </div>
           </div>
           <div class="card">
@@ -159,7 +174,9 @@
               <h3><i class="ri-alert-line"></i> Peringatan Stok</h3>
             </div>
             <div class="card-body" id="dashAlertList">
-              <div class="empty-state"><i class="ri-checkbox-circle-line"></i><p>Semua stok aman</p></div>
+              <div class="empty-state"><i class="ri-checkbox-circle-line"></i>
+                <p>Semua stok aman</p>
+              </div>
             </div>
           </div>
         </div>
@@ -201,7 +218,9 @@
                 </tr>
               </thead>
               <tbody id="bodyProduk">
-                <tr><td colspan="10" class="empty-row"><i class="ri-inbox-2-line"></i> Belum ada barang terdaftar</td></tr>
+                <tr>
+                  <td colspan="10" class="empty-row"><i class="ri-inbox-2-line"></i> Belum ada barang terdaftar</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -236,7 +255,8 @@
                 </div>
                 <div class="form-group">
                   <label for="masukSupplier">Supplier / Sumber</label>
-                  <input type="text" id="masukSupplier" class="form-control" placeholder="Nama supplier atau sumber barang" />
+                  <input type="text" id="masukSupplier" class="form-control"
+                    placeholder="Nama supplier atau sumber barang" />
                 </div>
                 <div class="form-group">
                   <label for="masukNota">Nomor Nota / Faktur</label>
@@ -262,7 +282,9 @@
               <h3>Riwayat Barang Masuk</h3>
             </div>
             <div class="tx-list" id="listMasuk">
-              <div class="empty-state"><i class="ri-inbox-2-line"></i><p>Belum ada data</p></div>
+              <div class="empty-state"><i class="ri-inbox-2-line"></i>
+                <p>Belum ada data</p>
+              </div>
             </div>
           </div>
         </div>
@@ -324,7 +346,9 @@
               <h3>Riwayat Barang Keluar</h3>
             </div>
             <div class="tx-list" id="listKeluar">
-              <div class="empty-state"><i class="ri-inbox-2-line"></i><p>Belum ada data</p></div>
+              <div class="empty-state"><i class="ri-inbox-2-line"></i>
+                <p>Belum ada data</p>
+              </div>
             </div>
           </div>
         </div>
@@ -337,12 +361,14 @@
             <h3><i class="ri-calculator-line"></i> Hitung Barang (Stock Opname)</h3>
             <div style="display:flex;gap:.5rem;">
               <button class="btn btn-ghost btn-sm" id="btnResetOpname"><i class="ri-refresh-line"></i> Reset</button>
-              <button class="btn btn-warning btn-sm" id="btnSesuaikanOpname"><i class="ri-equalizer-line"></i> Sesuaikan Stok Sistem</button>
+              <button class="btn btn-warning btn-sm" id="btnSesuaikanOpname"><i class="ri-equalizer-line"></i> Sesuaikan
+                Stok Sistem</button>
             </div>
           </div>
           <div class="opname-info">
             <i class="ri-information-line"></i>
-            <span>Masukkan jumlah fisik nyata hasil penghitungan. Sistem akan menampilkan selisih antara stok tercatat dan stok fisik. Klik <strong>Sesuaikan Stok Sistem</strong> untuk menyimpan koreksi.</span>
+            <span>Masukkan jumlah fisik nyata hasil penghitungan. Sistem akan menampilkan selisih antara stok tercatat
+              dan stok fisik. Klik <strong>Sesuaikan Stok Sistem</strong> untuk menyimpan koreksi.</span>
           </div>
           <div class="table-wrap">
             <table class="data-table" id="tableOpname">
@@ -357,15 +383,22 @@
                 </tr>
               </thead>
               <tbody id="bodyOpname">
-                <tr><td colspan="6" class="empty-row"><i class="ri-inbox-2-line"></i> Tambahkan barang di Katalog terlebih dahulu</td></tr>
+                <tr>
+                  <td colspan="6" class="empty-row"><i class="ri-inbox-2-line"></i> Tambahkan barang di Katalog terlebih
+                    dahulu</td>
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
         <div class="card">
-          <div class="card-header"><h3><i class="ri-history-line"></i> Riwayat Opname</h3></div>
+          <div class="card-header">
+            <h3><i class="ri-history-line"></i> Riwayat Opname</h3>
+          </div>
           <div class="card-body" id="opnameHistory">
-            <div class="empty-state"><i class="ri-inbox-2-line"></i><p>Belum ada riwayat opname</p></div>
+            <div class="empty-state"><i class="ri-inbox-2-line"></i>
+              <p>Belum ada riwayat opname</p>
+            </div>
           </div>
         </div>
       </section>
@@ -400,7 +433,9 @@
                 </tr>
               </thead>
               <tbody id="bodyRiwayat">
-                <tr><td colspan="6" class="empty-row"><i class="ri-inbox-2-line"></i> Belum ada riwayat mutasi</td></tr>
+                <tr>
+                  <td colspan="6" class="empty-row"><i class="ri-inbox-2-line"></i> Belum ada riwayat mutasi</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -427,7 +462,8 @@
             </div>
             <div class="form-group">
               <label for="produkKategori">Kategori <span class="req">*</span></label>
-              <input type="text" id="produkKategori" class="form-control" required placeholder="e.g. Sembako, Minuman" list="kategoriList" />
+              <input type="text" id="produkKategori" class="form-control" required placeholder="e.g. Sembako, Minuman"
+                list="kategoriList" />
               <datalist id="kategoriList"></datalist>
             </div>
           </div>
@@ -467,7 +503,8 @@
           </div>
           <div class="form-group">
             <label for="produkDeskripsi">Deskripsi / Keterangan</label>
-            <textarea id="produkDeskripsi" class="form-control" rows="2" placeholder="Keterangan tambahan..."></textarea>
+            <textarea id="produkDeskripsi" class="form-control" rows="2"
+              placeholder="Keterangan tambahan..."></textarea>
           </div>
           <div class="modal-actions">
             <button type="button" class="btn btn-ghost" id="cancelProdukModal">Batal</button>
@@ -504,8 +541,10 @@
       </div>
       <div class="modal-body">
         <div class="guide-tabs">
-          <button type="button" class="guide-tab active" data-guide="online"><i class="ri-global-line"></i> 1. Link Online (GitHub)</button>
-          <button type="button" class="guide-tab" data-guide="wifi"><i class="ri-wifi-line"></i> 2. Wi-Fi Lokal (Offline)</button>
+          <button type="button" class="guide-tab active" data-guide="online"><i class="ri-global-line"></i> 1. Link
+            Online (GitHub)</button>
+          <button type="button" class="guide-tab" data-guide="wifi"><i class="ri-wifi-line"></i> 2. Wi-Fi Lokal
+            (Offline)</button>
         </div>
 
         <div class="guide-pane active" id="guide-online">
@@ -521,15 +560,19 @@
               <strong>Ketik URL GitHub Pages:</strong>
               <div class="url-copy-box">
                 <input type="text" readonly value="https://gharphas.github.io/stok-toko/" id="ghUrlInput" />
-                <button type="button" class="btn btn-primary btn-sm" id="btnCopyGhUrl"><i class="ri-file-copy-line"></i> Salin Link</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnCopyGhUrl"><i class="ri-file-copy-line"></i>
+                  Salin Link</button>
               </div>
-              <small class="guide-hint">*Di GitHub Repo &rarr; Settings &rarr; Pages &rarr; Source: pilih Branch <code>main</code> &rarr; Save.</small>
+              <small class="guide-hint">*Di GitHub Repo &rarr; Settings &rarr; Pages &rarr; Source: pilih Branch
+                <code>main</code> &rarr; Save.</small>
             </li>
             <li>
               <strong>Tambahkan ke Layar Utama (Icon App di HP):</strong>
               <div class="pwa-tip">
-                <p>🤖 <strong>Chrome Android:</strong> Tap titik tiga (&vellip;) &rarr; pilih <strong>"Tambahkan ke Layar Utama" / "Install Aplikasi"</strong>.</p>
-                <p>🍎 <strong>Safari iPhone:</strong> Tap tombol Share (<i class="ri-share-box-line"></i>) &rarr; pilih <strong>"Add to Home Screen"</strong>.</p>
+                <p>🤖 <strong>Chrome Android:</strong> Tap titik tiga (&vellip;) &rarr; pilih <strong>"Tambahkan ke
+                    Layar Utama" / "Install Aplikasi"</strong>.</p>
+                <p>🍎 <strong>Safari iPhone:</strong> Tap tombol Share (<i class="ri-share-box-line"></i>) &rarr; pilih
+                  <strong>"Add to Home Screen"</strong>.</p>
               </div>
             </li>
           </ol>
@@ -551,6 +594,61 @@
 
         <div class="modal-actions">
           <button type="button" class="btn btn-primary" id="btnDonePhoneModal">Tutup Panduan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: KELOLA DATABASE & BACKUP -->
+  <div class="modal-overlay" id="modalDbBackup">
+    <div class="modal-box modal-guide">
+      <div class="modal-header">
+        <h3><i class="ri-database-2-fill text-green"></i> Status Database & Backup</h3>
+        <button class="modal-close" id="closeDbModal" aria-label="Tutup"><i class="ri-close-line"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="db-info-card">
+          <div class="db-info-row">
+            <span class="db-info-label">Mode Penyimpanan:</span>
+            <span class="badge badge-aman" id="dbModeBadge"><i class="ri-checkbox-circle-fill"></i> Database Server (db.json)</span>
+          </div>
+          <div class="db-info-row">
+            <span class="db-info-label">Lokasi Database:</span>
+            <code class="db-path">stock-toko/data/db.json</code>
+          </div>
+          <div class="db-info-row">
+            <span class="db-info-label">Sinkronisasi HP & Laptop:</span>
+            <span class="text-green fw-bold">Aktif & Real-time</span>
+          </div>
+          <p class="db-info-desc">
+            <i class="ri-shield-check-fill text-green"></i> Setiap barang masuk, barang keluar, dan stok baru langsung tersimpan otomatis ke file database di laptop. Data tersimpan permanen dan tidak akan berubah kecuali ada penginputan baru.
+          </p>
+        </div>
+
+        <div class="backup-action-grid">
+          <button type="button" class="btn btn-primary btn-block" id="btnDownloadBackup">
+            <i class="ri-download-cloud-2-line"></i> Download Backup Database (.json)
+          </button>
+          
+          <label class="btn btn-ghost btn-block file-upload-btn" style="cursor:pointer; display:inline-flex; justify-content:center;">
+            <i class="ri-upload-cloud-2-line"></i> Pulihkan dari File Backup (.json)
+            <input type="file" id="fileRestoreDb" accept=".json" style="display:none;" />
+          </label>
+        </div>
+
+        <hr style="border:none; border-top:1px solid var(--border); margin: 1.25rem 0;" />
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.5rem;">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnLoadSampleData">
+            <i class="ri-sparkling-line"></i> Muat Data Contoh
+          </button>
+          <button type="button" class="btn btn-danger btn-sm" id="btnResetAllData">
+            <i class="ri-delete-bin-7-line"></i> Kosongkan Database
+          </button>
+        </div>
+
+        <div class="modal-actions" style="margin-top:1.25rem;">
+          <button type="button" class="btn btn-primary" id="btnDoneDbModal">Selesai</button>
         </div>
       </div>
     </div>
@@ -586,4 +684,5 @@
 
   <script src="app.js"></script>
 </body>
+
 </html>
