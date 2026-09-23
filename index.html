@@ -476,6 +476,7 @@
                 <option value="Gram">Gram</option>
                 <option value="Liter">Liter</option>
                 <option value="Dus">Dus</option>
+                <option value="pcs">Pcs</option>
                 <option value="Pack">Pack</option>
                 <option value="Botol">Botol</option>
                 <option value="Karung">Karung</option>
@@ -572,7 +573,8 @@
                 <p>🤖 <strong>Chrome Android:</strong> Tap titik tiga (&vellip;) &rarr; pilih <strong>"Tambahkan ke
                     Layar Utama" / "Install Aplikasi"</strong>.</p>
                 <p>🍎 <strong>Safari iPhone:</strong> Tap tombol Share (<i class="ri-share-box-line"></i>) &rarr; pilih
-                  <strong>"Add to Home Screen"</strong>.</p>
+                  <strong>"Add to Home Screen"</strong>.
+                </p>
               </div>
             </li>
           </ol>
@@ -610,7 +612,8 @@
         <div class="db-info-card">
           <div class="db-info-row">
             <span class="db-info-label">Mode Penyimpanan:</span>
-            <span class="badge badge-aman" id="dbModeBadge"><i class="ri-checkbox-circle-fill"></i> Database Server (db.json)</span>
+            <span class="badge badge-aman" id="dbModeBadge"><i class="ri-checkbox-circle-fill"></i> Database Server
+              (db.json)</span>
           </div>
           <div class="db-info-row">
             <span class="db-info-label">Lokasi Database:</span>
@@ -621,7 +624,9 @@
             <span class="text-green fw-bold">Aktif & Real-time</span>
           </div>
           <p class="db-info-desc">
-            <i class="ri-shield-check-fill text-green"></i> Setiap barang masuk, barang keluar, dan stok baru langsung tersimpan otomatis ke file database di laptop. Data tersimpan permanen dan tidak akan berubah kecuali ada penginputan baru.
+            <i class="ri-shield-check-fill text-green"></i> Setiap barang masuk, barang keluar, dan stok baru langsung
+            tersimpan otomatis ke file database di laptop. Data tersimpan permanen dan tidak akan berubah kecuali ada
+            penginputan baru.
           </p>
         </div>
 
@@ -629,8 +634,9 @@
           <button type="button" class="btn btn-primary btn-block" id="btnDownloadBackup">
             <i class="ri-download-cloud-2-line"></i> Download Backup Database (.json)
           </button>
-          
-          <label class="btn btn-ghost btn-block file-upload-btn" style="cursor:pointer; display:inline-flex; justify-content:center;">
+
+          <label class="btn btn-ghost btn-block file-upload-btn"
+            style="cursor:pointer; display:inline-flex; justify-content:center;">
             <i class="ri-upload-cloud-2-line"></i> Pulihkan dari File Backup (.json)
             <input type="file" id="fileRestoreDb" accept=".json" style="display:none;" />
           </label>
