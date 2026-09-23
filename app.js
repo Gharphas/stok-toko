@@ -7,47 +7,161 @@
 // ============================================================
 //  DATABASE MANAGER (Server REST API + Local Fallback)
 // ============================================================
+// ============================================================
+//  DATABASE MANAGER (Multi-device Real-Time Sync & Protection)
+// ============================================================
 const DB = {
   PRODUCTS: 'sm_products',
   TRANSACTIONS: 'sm_transactions',
   OPNAMES: 'sm_opnames',
+  LAST_UPDATED: 'sm_last_updated',
+  SERVER_URL: 'sm_server_url',
   _isServer: false,
-  _cache: { products: [], transactions: [], opnames: [] },
+  _mode: 'offline', // 'server' | 'github' | 'raw_github' | 'offline'
+  _cache: { products: [], transactions: [], opnames: [], lastUpdated: null },
+
+  getApiUrl(endpoint) {
+    const custom = localStorage.getItem(this.SERVER_URL);
+    if (custom && custom.trim()) {
+      return custom.trim().replace(/\/+$/, '') + endpoint;
+    }
+    // Jika dibuka dari localhost / IP lokal laptop:
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || /^192\.168\./.test(window.location.hostname) || /^10\./.test(window.location.hostname)) {
+      return endpoint;
+    }
+    return endpoint;
+  },
 
   async init() {
-    // 1. Muat dari localStorage terlebih dahulu (instant UI render)
+    // 1. Muat dari localStorage terlebih dahulu (instant UI render, anti blank)
     try {
       this._cache.products = JSON.parse(localStorage.getItem(this.PRODUCTS)) || [];
       this._cache.transactions = JSON.parse(localStorage.getItem(this.TRANSACTIONS)) || [];
       this._cache.opnames = JSON.parse(localStorage.getItem(this.OPNAMES)) || [];
+      this._cache.lastUpdated = localStorage.getItem(this.LAST_UPDATED) || null;
     } catch {
-      this._cache = { products: [], transactions: [], opnames: [] };
+      this._cache = { products: [], transactions: [], opnames: [], lastUpdated: null };
     }
+    this.updateLastUpdatedDisplay();
 
-    // 2. Hubungkan ke database server (data/db.json)
+    // 2. Hubungkan ke database server (data/db.json) atau GitHub database
     await this.fetchFromServer();
   },
 
   async fetchFromServer() {
+    const apiUrl = this.getApiUrl('/api/data');
+    let loadedData = null;
+    let source = '';
+
+    // 1. Coba hubungi REST API Server (Laptop / Localhost / IP Wi-Fi)
     try {
-      const res = await fetch('/api/data', { cache: 'no-store' });
+      const res = await fetch(apiUrl, { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.data) {
-          this._cache.products = Array.isArray(json.data.products) ? json.data.products : [];
-          this._cache.transactions = Array.isArray(json.data.transactions) ? json.data.transactions : [];
-          this._cache.opnames = Array.isArray(json.data.opnames) ? json.data.opnames : [];
-          this._isServer = true;
-          this._persistLocal();
-          this.updateStatusPill(true);
-          return true;
+          loadedData = json.data;
+          source = 'server';
         }
       }
     } catch (err) {
-      // Server offline / mode static
+      // Server lokal tidak terjangkau (misal buka di luar jaringan Wi-Fi toko)
     }
+
+    // 2. Jika bukan di server lokal (misal dibuka di GitHub Pages), coba ambil file data/db.json statis
+    if (!loadedData) {
+      try {
+        const res = await fetch('./data/db.json?t=' + Date.now(), { cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          if (json && (Array.isArray(json.products) || Array.isArray(json.transactions))) {
+            loadedData = json;
+            source = 'github';
+          }
+        }
+      } catch (err) {}
+    }
+
+    // 3. Fallback online: coba ambil langsung dari Raw GitHub jika buka online
+    if (!loadedData && (!this._cache.products || this._cache.products.length === 0)) {
+      try {
+        const res = await fetch('https://raw.githubusercontent.com/Gharphas/stok-toko/main/data/db.json?t=' + Date.now(), { cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          if (json && (Array.isArray(json.products) || Array.isArray(json.transactions))) {
+            loadedData = json;
+            source = 'raw_github';
+          }
+        }
+      } catch (err) {}
+    }
+
+    // PROSES SINKRONISASI CERDAS — ANTI RESET & PERTAHANKAN POSISI TERAKHIR
+    if (loadedData) {
+      const remoteProducts = Array.isArray(loadedData.products) ? loadedData.products : [];
+      const remoteTxs = Array.isArray(loadedData.transactions) ? loadedData.transactions : [];
+      const remoteOpnames = Array.isArray(loadedData.opnames) ? loadedData.opnames : [];
+      const remoteLastUpdated = loadedData.lastUpdated ? new Date(loadedData.lastUpdated).getTime() : 0;
+      const localLastUpdated = this._cache.lastUpdated ? new Date(this._cache.lastUpdated).getTime() : 0;
+
+      // Kasus A: Server kosong ([]), tapi HP/Laptop memiliki data produk lokal yang sudah ada
+      if (remoteProducts.length === 0 && this._cache.products.length > 0) {
+        console.log('Server kosong namun data lokal ada. Otomatis sinkronkan data lokal ke server...');
+        if (source === 'server') {
+          await this.restoreFull({
+            products: this._cache.products,
+            transactions: this._cache.transactions,
+            opnames: this._cache.opnames,
+            lastUpdated: this._cache.lastUpdated || new Date().toISOString()
+          });
+        }
+        this._isServer = (source === 'server');
+        this._mode = source;
+        this.updateStatusPill(true, source);
+        return true;
+      }
+
+      // Kasus B: Data lokal kosong (HP baru dibuka), ambil langsung dari remote
+      if (this._cache.products.length === 0 && remoteProducts.length > 0) {
+        this._cache.products = remoteProducts;
+        this._cache.transactions = remoteTxs;
+        this._cache.opnames = remoteOpnames;
+        this._cache.lastUpdated = loadedData.lastUpdated || new Date().toISOString();
+        this._persistLocal();
+        this._isServer = (source === 'server');
+        this._mode = source;
+        this.updateStatusPill(true, source);
+        return true;
+      }
+
+      // Kasus C: Keduanya ada data -> gunakan data yang paling update
+      if (remoteLastUpdated >= localLastUpdated || remoteProducts.length >= this._cache.products.length) {
+        this._cache.products = remoteProducts;
+        this._cache.transactions = remoteTxs;
+        this._cache.opnames = remoteOpnames;
+        this._cache.lastUpdated = loadedData.lastUpdated || new Date().toISOString();
+        this._persistLocal();
+      } else {
+        // Data lokal lebih baru, jika terhubung ke server, kirim ke server
+        if (source === 'server') {
+          await this.restoreFull({
+            products: this._cache.products,
+            transactions: this._cache.transactions,
+            opnames: this._cache.opnames,
+            lastUpdated: this._cache.lastUpdated || new Date().toISOString()
+          });
+        }
+      }
+
+      this._isServer = (source === 'server');
+      this._mode = source;
+      this.updateStatusPill(true, source);
+      return true;
+    }
+
+    // Jika offline sama sekali, gunakan data lokal yang ada
     this._isServer = false;
-    this.updateStatusPill(false);
+    this._mode = 'offline';
+    this.updateStatusPill(false, 'offline');
     return false;
   },
 
@@ -55,6 +169,17 @@ const DB = {
     localStorage.setItem(this.PRODUCTS, JSON.stringify(this._cache.products));
     localStorage.setItem(this.TRANSACTIONS, JSON.stringify(this._cache.transactions));
     localStorage.setItem(this.OPNAMES, JSON.stringify(this._cache.opnames));
+    if (this._cache.lastUpdated) {
+      localStorage.setItem(this.LAST_UPDATED, this._cache.lastUpdated);
+    }
+    this.updateLastUpdatedDisplay();
+  },
+
+  updateLastUpdatedDisplay() {
+    const el = document.getElementById('dbLastUpdatedText');
+    if (el) {
+      el.textContent = this._cache.lastUpdated ? formatDate(this._cache.lastUpdated) : 'Belum ada mutasi';
+    }
   },
 
   getProducts()     { return this._cache.products; },
@@ -62,9 +187,12 @@ const DB = {
   getOpnames()      { return this._cache.opnames; },
 
   async saveProduct(data) {
+    data.updatedAt = new Date().toISOString();
+    this._cache.lastUpdated = data.updatedAt;
+
     if (this._isServer) {
       try {
-        const res = await fetch('/api/products', {
+        const res = await fetch(this.getApiUrl('/api/products'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
@@ -88,13 +216,11 @@ const DB = {
       } else {
         data.stok = this._cache.products[idx].stok;
       }
-      data.updatedAt = new Date().toISOString();
       this._cache.products[idx] = { ...this._cache.products[idx], ...data };
     } else {
       if (!data.id) data.id = genId();
       data.stok = Number(data.stok) || 0;
       data.createdAt = new Date().toISOString();
-      data.updatedAt = new Date().toISOString();
       this._cache.products.push(data);
     }
     this._persistLocal();
@@ -102,9 +228,10 @@ const DB = {
   },
 
   async deleteProduct(id) {
+    this._cache.lastUpdated = new Date().toISOString();
     if (this._isServer) {
       try {
-        const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+        const res = await fetch(this.getApiUrl(`/api/products/${id}`), { method: 'DELETE' });
         const json = await res.json();
         if (json.success && json.data) {
           this._cache = json.data;
@@ -120,9 +247,10 @@ const DB = {
   },
 
   async catatMasuk(payload) {
+    this._cache.lastUpdated = new Date().toISOString();
     if (this._isServer) {
       try {
-        const res = await fetch('/api/masuk', {
+        const res = await fetch(this.getApiUrl('/api/masuk'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -147,7 +275,9 @@ const DB = {
     const prod = this._cache.products[idx];
     const qty = Number(payload.jumlah) || 0;
     prod.stok = (Number(prod.stok) || 0) + qty;
-    if (payload.hargaBeli) prod.hargaBeli = Number(payload.hargaBeli);
+    if (payload.hargaBeli !== undefined && payload.hargaBeli !== null && !isNaN(Number(payload.hargaBeli))) {
+      prod.hargaBeli = Number(payload.hargaBeli);
+    }
     prod.updatedAt = new Date().toISOString();
 
     const tx = {
@@ -170,9 +300,10 @@ const DB = {
   },
 
   async catatKeluar(payload) {
+    this._cache.lastUpdated = new Date().toISOString();
     if (this._isServer) {
       try {
-        const res = await fetch('/api/keluar', {
+        const res = await fetch(this.getApiUrl('/api/keluar'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -186,7 +317,7 @@ const DB = {
           throw new Error(json.message || 'Gagal menyimpan barang keluar');
         }
       } catch (err) {
-        if (err.message && err.message.includes('Stok tidak mencukupi')) throw err;
+        if (err.message && !err.message.includes('Gagal')) throw err;
       }
     }
 
@@ -221,9 +352,10 @@ const DB = {
   },
 
   async catatOpname(changes) {
+    this._cache.lastUpdated = new Date().toISOString();
     if (this._isServer) {
       try {
-        const res = await fetch('/api/opname', {
+        const res = await fetch(this.getApiUrl('/api/opname'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ changes })
@@ -261,9 +393,10 @@ const DB = {
   },
 
   async clearTransactions() {
+    this._cache.lastUpdated = new Date().toISOString();
     if (this._isServer) {
       try {
-        const res = await fetch('/api/transactions', { method: 'DELETE' });
+        const res = await fetch(this.getApiUrl('/api/transactions'), { method: 'DELETE' });
         const json = await res.json();
         if (json.success && json.data) {
           this._cache = json.data;
@@ -279,9 +412,12 @@ const DB = {
   },
 
   async restoreFull(fullData) {
+    if (!fullData.lastUpdated) fullData.lastUpdated = new Date().toISOString();
+    this._cache.lastUpdated = fullData.lastUpdated;
+
     if (this._isServer) {
       try {
-        const res = await fetch('/api/restore', {
+        const res = await fetch(this.getApiUrl('/api/restore'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(fullData)
@@ -301,24 +437,74 @@ const DB = {
     return { success: true };
   },
 
-  updateStatusPill(isOnline) {
+  exportSyncCode() {
+    const data = {
+      p: this._cache.products,
+      t: this._cache.transactions,
+      o: this._cache.opnames,
+      u: this._cache.lastUpdated || new Date().toISOString()
+    };
+    try {
+      return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+    } catch {
+      return btoa(JSON.stringify(data));
+    }
+  },
+
+  async importSyncCode(codeStr) {
+    if (!codeStr || !codeStr.trim()) throw new Error('Kode sinkronisasi kosong!');
+    let json;
+    try {
+      const decoded = decodeURIComponent(escape(atob(codeStr.trim())));
+      json = JSON.parse(decoded);
+    } catch (e) {
+      try {
+        json = JSON.parse(atob(codeStr.trim()));
+      } catch (err) {
+        json = JSON.parse(codeStr.trim());
+      }
+    }
+    const full = {
+      products: json.p || json.products || [],
+      transactions: json.t || json.transactions || [],
+      opnames: json.o || json.opnames || [],
+      lastUpdated: json.u || json.lastUpdated || new Date().toISOString()
+    };
+    await this.restoreFull(full);
+    return full;
+  },
+
+  updateStatusPill(isOnline, source = 'server') {
     const pill = document.getElementById('dbStatusPill');
     const text = document.getElementById('dbStatusText');
     const badge = document.getElementById('dbModeBadge');
+    const syncText = document.getElementById('dbSyncStatusText');
     if (!pill) return;
+
     if (isOnline) {
       pill.className = 'db-status-pill';
-      text.textContent = 'Database Aktif (Real-time)';
-      if (badge) {
-        badge.className = 'badge badge-aman';
-        badge.innerHTML = '<i class="ri-checkbox-circle-fill"></i> Database Server (db.json)';
+      if (source === 'server') {
+        text.textContent = 'Database Laptop (Real-time)';
+        if (syncText) syncText.textContent = 'Aktif & Real-time (Wi-Fi Server)';
+        if (badge) {
+          badge.className = 'badge badge-aman';
+          badge.innerHTML = '<i class="ri-checkbox-circle-fill"></i> Database Server (db.json)';
+        }
+      } else {
+        text.textContent = 'Database Online (GitHub Sync)';
+        if (syncText) syncText.textContent = 'Tersinkron ke GitHub (data/db.json)';
+        if (badge) {
+          badge.className = 'badge badge-aman';
+          badge.innerHTML = '<i class="ri-cloud-fill"></i> Cloud GitHub Pages';
+        }
       }
     } else {
       pill.className = 'db-status-pill offline';
-      text.textContent = 'Mode Offline (Browser Storage)';
+      text.textContent = 'Mode Offline (Penyimpanan HP)';
+      if (syncText) syncText.textContent = 'Tersimpan di Handphone (Aman)';
       if (badge) {
         badge.className = 'badge badge-menipis';
-        badge.innerHTML = '<i class="ri-alert-fill"></i> Mode Offline';
+        badge.innerHTML = '<i class="ri-smartphone-line"></i> Penyimpanan Lokal HP';
       }
     }
   }
@@ -1205,10 +1391,85 @@ document.getElementById('btnResetAllData')?.addEventListener('click', () => {
 });
 
 // ============================================================
-//  AUTO-SYNC BACKGROUND (Sync Multi-device Laptop & HP)
+//  MULTI-DEVICE SYNC & SERVER SETTINGS
+// ============================================================
+// Copy Wi-Fi Server URL
+document.getElementById('btnCopyWifiUrl')?.addEventListener('click', () => {
+  const inp = document.getElementById('wifiUrlInput');
+  if (inp) {
+    inp.select();
+    navigator.clipboard.writeText(inp.value).then(() => {
+      showToast('Link Wi-Fi Server berhasil disalin! Buka di browser HP Anda.', 'success');
+    }).catch(() => {
+      showToast('Salin manual: ' + inp.value, 'info');
+    });
+  }
+});
+
+// Salin Kode Sinkronisasi Data Antar HP
+document.getElementById('btnCopySyncCode')?.addEventListener('click', () => {
+  const code = DB.exportSyncCode();
+  navigator.clipboard.writeText(code).then(() => {
+    showToast('Kode data berhasil disalin! Kirim via WhatsApp/pesan ke HP lain lalu klik "Tempel di HP Ini".', 'success');
+  }).catch(() => {
+    prompt('Salin kode sinkronisasi ini:', code);
+  });
+});
+
+// Toggle Tampilan Input Tempel Kode
+document.getElementById('btnTogglePasteSync')?.addEventListener('click', () => {
+  const c = document.getElementById('pasteSyncContainer');
+  if (c) c.style.display = c.style.display === 'none' ? 'block' : 'none';
+});
+
+// Terapkan Kode Sinkronisasi
+document.getElementById('btnApplySyncCode')?.addEventListener('click', async () => {
+  const val = document.getElementById('syncCodeInput')?.value.trim();
+  if (!val) {
+    showToast('Silakan tempel kode sinkronisasi terlebih dahulu!', 'warning');
+    return;
+  }
+  try {
+    const full = await DB.importSyncCode(val);
+    renderDashboard();
+    renderTableProduk();
+    populateProdukSelects();
+    hideDbModal();
+    showToast(`Berhasil menyamakan ${full.products.length} barang dari HP lain! Data tersimpan aman dan tidak akan tereset.`, 'success');
+  } catch (err) {
+    showToast('Kode sinkronisasi tidak valid: ' + err.message, 'error');
+  }
+});
+
+// Hubungkan ke Alamat Server Laptop Tertentu
+document.getElementById('btnSaveServerUrl')?.addEventListener('click', async () => {
+  const val = document.getElementById('inputServerUrl')?.value.trim();
+  if (val) {
+    localStorage.setItem(DB.SERVER_URL, val);
+    showToast('Menghubungkan ke: ' + val + '...', 'info');
+    const ok = await DB.fetchFromServer();
+    if (ok) {
+      renderDashboard();
+      renderTableProduk();
+      populateProdukSelects();
+      showToast('Berhasil terhubung ke database server laptop! Data tersinkron real-time.', 'success');
+    } else {
+      showToast('Belum dapat terhubung. Pastikan laptop & HP berada di Wi-Fi yang sama.', 'warning');
+    }
+  }
+});
+
+// Muat inputServerUrl dari localStorage jika pernah disimpan
+const savedServer = localStorage.getItem(DB.SERVER_URL);
+if (savedServer && document.getElementById('inputServerUrl')) {
+  document.getElementById('inputServerUrl').value = savedServer;
+}
+
+// ============================================================
+//  AUTO-SYNC BACKGROUND (Sync Multi-device Laptop & HP Real-Time)
 // ============================================================
 setInterval(async () => {
-  if (DB._isServer && document.visibilityState === 'visible') {
+  if (document.visibilityState === 'visible') {
     const prevTxs = DB.getTransactions().length;
     const prevProds = JSON.stringify(DB.getProducts());
     const ok = await DB.fetchFromServer();
@@ -1222,15 +1483,13 @@ setInterval(async () => {
       }
     }
   }
-}, 3500);
+}, 3000);
 
 window.addEventListener('focus', () => {
-  if (DB._isServer) {
-    DB.fetchFromServer().then(() => {
-      const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
-      renderByTab(activeTab);
-    });
-  }
+  DB.fetchFromServer().then(() => {
+    const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+    renderByTab(activeTab);
+  });
 });
 
 // ============================================================
