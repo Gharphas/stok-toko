@@ -83,11 +83,16 @@ const DB = {
     // Fallback lokal
     const idx = this._cache.products.findIndex(p => p.id === data.id);
     if (idx > -1) {
-      data.stok = this._cache.products[idx].stok;
+      if (data.stok !== undefined && data.stok !== null && !isNaN(Number(data.stok))) {
+        data.stok = Number(data.stok);
+      } else {
+        data.stok = this._cache.products[idx].stok;
+      }
       data.updatedAt = new Date().toISOString();
       this._cache.products[idx] = { ...this._cache.products[idx], ...data };
     } else {
       if (!data.id) data.id = genId();
+      data.stok = Number(data.stok) || 0;
       data.createdAt = new Date().toISOString();
       data.updatedAt = new Date().toISOString();
       this._cache.products.push(data);
@@ -192,10 +197,8 @@ const DB = {
     const prod = this._cache.products[idx];
     const stokSekarang = Number(prod.stok) || 0;
     const qty = Number(payload.jumlah) || 0;
-    if (qty > stokSekarang) {
-      throw new Error(`Stok tidak mencukupi! Tersedia: ${stokSekarang} ${prod.satuan}`);
-    }
 
+    // Stok tidak dibatasi (bisa berkurang bebas atau minus)
     prod.stok = stokSekarang - qty;
     prod.updatedAt = new Date().toISOString();
 
@@ -357,13 +360,16 @@ function showToast(msg, type = 'success') {
 }
 
 function getStockStatus(product) {
-  if (product.stok <= 0) return 'habis';
-  if (product.stok <= product.minStok) return 'menipis';
+  const stok = Number(product.stok) || 0;
+  if (stok < 0) return 'minus';
+  if (stok === 0) return 'habis';
+  const minStok = Number(product.minStok) || 0;
+  if (minStok > 0 && stok <= minStok) return 'menipis';
   return 'aman';
 }
 
 function statusBadge(status) {
-  const labels = { aman: 'Stok Aman', menipis: 'Stok Menipis', habis: 'Stok Habis' };
+  const labels = { aman: 'Stok Aman', menipis: 'Stok Menipis', habis: 'Stok Habis', minus: 'Stok Minus' };
   return `<span class="badge badge-${status}">${labels[status] || status}</span>`;
 }
 
@@ -633,12 +639,13 @@ function renderDashboard() {
   } else {
     alertEl.innerHTML = alerts.map(p => {
       const st = getStockStatus(p);
+      const badgeText = st === 'minus' ? 'Minus' : st === 'habis' ? 'Habis' : 'Menipis';
       return `<div class="alert-item ${st}">
         <div>
           <div class="ai-name">${p.nama}</div>
-          <div class="ai-info">${p.stok} ${p.satuan} &bull; Min: ${p.minStok} ${p.satuan}</div>
+          <div class="ai-info">${Number(p.stok).toLocaleString('id-ID')} ${p.satuan}${p.minStok > 0 ? ` &bull; Min: ${p.minStok} ${p.satuan}` : ''}</div>
         </div>
-        <span class="ai-badge badge badge-${st}">${st === 'habis' ? 'Habis' : 'Menipis'}</span>
+        <span class="ai-badge badge badge-${st}">${badgeText}</span>
       </div>`;
     }).join('');
   }
@@ -682,8 +689,8 @@ function renderTableProduk(filterKat = '', filterSt = '', q = '') {
       <td class="fw-bold">${p.nama}</td>
       <td>${p.kategori || '-'}</td>
       <td>${p.satuan}</td>
-      <td class="fw-bold ${st === 'habis' ? 'text-red' : st === 'menipis' ? 'text-yellow' : ''}">${Number(p.stok).toLocaleString('id-ID')}</td>
-      <td>${p.minStok}</td>
+      <td class="fw-bold ${st === 'minus' ? 'text-red' : st === 'habis' ? 'text-red' : st === 'menipis' ? 'text-yellow' : ''}">${Number(p.stok).toLocaleString('id-ID')}</td>
+      <td>${p.minStok !== undefined && p.minStok !== null ? p.minStok : 0}</td>
       <td>${formatRupiah(p.hargaBeli)}</td>
       <td>${formatRupiah(p.hargaJual)}</td>
       <td>${statusBadge(st)}</td>
@@ -709,8 +716,10 @@ document.getElementById('btnAddProduk').addEventListener('click', () => {
   editingProdukId = null;
   document.getElementById('formProduk').reset();
   document.getElementById('produkId').value = '';
+  const lbl = document.getElementById('lblProdukStok');
+  if (lbl) lbl.textContent = 'Stok Awal';
   document.getElementById('produkStokAwal').value = '0';
-  document.getElementById('produkMinStok').value = '5';
+  document.getElementById('produkMinStok').value = '0';
   document.getElementById('modalProdukTitle').textContent = 'Tambah Barang Baru';
   document.getElementById('saveProdukBtn').textContent = 'Simpan Barang';
   document.getElementById('modalProduk').classList.add('open');
@@ -725,13 +734,18 @@ document.getElementById('modalProduk').addEventListener('click', (e) => {
 document.getElementById('formProduk').addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('produkId').value;
+  const rawStok = document.getElementById('produkStokAwal').value;
+  const stokVal = rawStok !== '' ? Number(rawStok) : 0;
+  const rawMinStok = document.getElementById('produkMinStok').value;
+  const minStokVal = rawMinStok !== '' ? Number(rawMinStok) : 0;
+
   const data = {
     id: id || '',
     nama:       document.getElementById('produkNama').value.trim(),
     kategori:   document.getElementById('produkKategori').value.trim(),
     satuan:     document.getElementById('produkSatuan').value,
-    stok:       Number(document.getElementById('produkStokAwal').value) || 0,
-    minStok:    Number(document.getElementById('produkMinStok').value) || 5,
+    stok:       stokVal,
+    minStok:    minStokVal,
     hargaBeli:  Number(document.getElementById('produkHargaBeli').value) || 0,
     hargaJual:  Number(document.getElementById('produkHargaJual').value) || 0,
     deskripsi:  document.getElementById('produkDeskripsi').value.trim(),
@@ -751,8 +765,10 @@ function openEditProduk(id) {
   document.getElementById('produkNama').value = p.nama;
   document.getElementById('produkKategori').value = p.kategori || '';
   document.getElementById('produkSatuan').value = p.satuan;
+  const lbl = document.getElementById('lblProdukStok');
+  if (lbl) lbl.textContent = 'Jumlah Stok';
   document.getElementById('produkStokAwal').value = p.stok;
-  document.getElementById('produkMinStok').value = p.minStok;
+  document.getElementById('produkMinStok').value = p.minStok !== undefined && p.minStok !== null ? p.minStok : 0;
   document.getElementById('produkHargaBeli').value = p.hargaBeli;
   document.getElementById('produkHargaJual').value = p.hargaJual;
   document.getElementById('produkDeskripsi').value = p.deskripsi || '';
@@ -818,7 +834,7 @@ document.getElementById('formMasuk').addEventListener('submit', async (e) => {
   const ket       = document.getElementById('masukKet').value.trim();
 
   if (!produkId) { showToast('Pilih barang terlebih dahulu.', 'error'); return; }
-  if (!jumlah || jumlah < 1) { showToast('Jumlah harus lebih dari 0.', 'error'); return; }
+  if (isNaN(jumlah) || jumlah === 0) { showToast('Masukkan jumlah barang masuk yang valid (tidak boleh 0).', 'error'); return; }
 
   try {
     const res = await DB.catatMasuk({ produkId, jumlah, hargaBeli, supplier, nota, keterangan: ket });
@@ -860,8 +876,9 @@ document.getElementById('keluarProduk').addEventListener('change', function() {
   if (!pid) { el.textContent = 'Pilih barang terlebih dahulu'; return; }
   const p = DB.getProducts().find(x => x.id === pid);
   if (p) {
-    el.textContent = `${Number(p.stok).toLocaleString('id-ID')} ${p.satuan}`;
-    el.style.color = p.stok <= 0 ? 'var(--red)' : p.stok <= p.minStok ? 'var(--yellow)' : 'var(--green)';
+    const stokNum = Number(p.stok) || 0;
+    el.textContent = `${stokNum.toLocaleString('id-ID')} ${p.satuan}`;
+    el.style.color = stokNum < 0 ? 'var(--red)' : stokNum === 0 ? 'var(--red)' : (p.minStok > 0 && stokNum <= p.minStok) ? 'var(--yellow)' : 'var(--green)';
   }
   updateKeluarPreview();
 });
@@ -888,7 +905,7 @@ document.getElementById('formKeluar').addEventListener('submit', async (e) => {
   const ket      = document.getElementById('keluarKet').value.trim();
 
   if (!produkId) { showToast('Pilih barang terlebih dahulu.', 'error'); return; }
-  if (!jumlah || jumlah < 1) { showToast('Jumlah harus lebih dari 0.', 'error'); return; }
+  if (isNaN(jumlah) || jumlah === 0) { showToast('Masukkan jumlah pengeluaran yang valid (tidak boleh 0).', 'error'); return; }
 
   try {
     const res = await DB.catatKeluar({ produkId, jumlah, jenisKeluar: jenis, keterangan: ket });
@@ -942,7 +959,7 @@ function renderOpname() {
       <td>
         <input type="number" class="form-control opname-input" 
                id="opname-${p.id}" 
-               min="0" placeholder="Masukkan jumlah fisik"
+               step="any" placeholder="Masukkan jumlah fisik"
                style="max-width:160px;"
                oninput="updateDiff('${p.id}')" />
       </td>

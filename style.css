@@ -388,6 +388,7 @@ input, select, textarea { font-family: var(--font); }
 .badge-aman    { background: var(--green-light);  color: var(--green); }
 .badge-menipis { background: var(--yellow-light); color: var(--yellow); }
 .badge-habis   { background: var(--red-light);    color: var(--red); }
+.badge-minus   { background: var(--red-light);    color: var(--red); border: 1px dashed var(--red); }
 .badge-masuk   { background: var(--green-light);  color: var(--green); }
 .badge-keluar  { background: var(--red-light);    color: var(--red); }
 .badge-opname  { background: var(--purple-light); color: var(--purple); }

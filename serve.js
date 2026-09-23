@@ -145,14 +145,16 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 404, { success: false, message: 'Barang tidak ditemukan' });
         }
 
-        const qty = Number(jumlah) || 0;
-        if (qty <= 0) {
-          return sendJson(res, 400, { success: false, message: 'Jumlah barang harus lebih dari 0' });
+        const qty = Number(jumlah);
+        if (isNaN(qty) || qty === 0) {
+          return sendJson(res, 400, { success: false, message: 'Jumlah barang masuk harus berupa angka valid selain 0' });
         }
 
         const prod = database.products[pIndex];
         prod.stok = (Number(prod.stok) || 0) + qty;
-        if (hargaBeli) prod.hargaBeli = Number(hargaBeli);
+        if (hargaBeli !== undefined && hargaBeli !== null && !isNaN(Number(hargaBeli))) {
+          prod.hargaBeli = Number(hargaBeli);
+        }
         prod.updatedAt = new Date().toISOString();
 
         const tx = {
@@ -198,21 +200,15 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 404, { success: false, message: 'Barang tidak ditemukan' });
         }
 
-        const qty = Number(jumlah) || 0;
-        if (qty <= 0) {
-          return sendJson(res, 400, { success: false, message: 'Jumlah pengeluaran harus lebih dari 0' });
+        const qty = Number(jumlah);
+        if (isNaN(qty) || qty === 0) {
+          return sendJson(res, 400, { success: false, message: 'Jumlah pengeluaran harus berupa angka valid selain 0' });
         }
 
         const prod = database.products[pIndex];
         const stokSekarang = Number(prod.stok) || 0;
 
-        if (qty > stokSekarang) {
-          return sendJson(res, 400, {
-            success: false,
-            message: `Stok tidak mencukupi! Tersedia: ${stokSekarang} ${prod.satuan}, Permintaan: ${qty} ${prod.satuan}`
-          });
-        }
-
+        // Stok tidak dibatasi (bisa berkurang bebas atau minus)
         prod.stok = stokSekarang - qty;
         prod.updatedAt = new Date().toISOString();
 
@@ -254,14 +250,21 @@ const server = http.createServer(async (req, res) => {
         if (prodData.id) {
           const idx = database.products.findIndex(p => p.id === prodData.id);
           if (idx > -1) {
-            prodData.stok = database.products[idx].stok; // lindungi jumlah stok saat edit info
+            // Jika stok diinputkan pada saat edit, perbarui nilainya tanpa dibatasi
+            if (prodData.stok !== undefined && prodData.stok !== null && !isNaN(Number(prodData.stok))) {
+              prodData.stok = Number(prodData.stok);
+            } else {
+              prodData.stok = database.products[idx].stok;
+            }
             prodData.updatedAt = new Date().toISOString();
             database.products[idx] = { ...database.products[idx], ...prodData };
           } else {
+            prodData.stok = Number(prodData.stok) || 0;
             database.products.push(prodData);
           }
         } else {
           prodData.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+          prodData.stok = Number(prodData.stok) || 0;
           prodData.createdAt = new Date().toISOString();
           prodData.updatedAt = new Date().toISOString();
           database.products.push(prodData);

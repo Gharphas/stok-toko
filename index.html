@@ -246,11 +246,11 @@
                 <div class="form-row">
                   <div class="form-group">
                     <label for="masukJumlah">Jumlah Masuk <span class="req">*</span></label>
-                    <input type="number" id="masukJumlah" class="form-control" min="1" required placeholder="0" />
+                    <input type="number" id="masukJumlah" class="form-control" step="any" required placeholder="Jumlah masuk" />
                   </div>
                   <div class="form-group">
                     <label for="masukHarga">Harga Beli (Rp) <span class="req">*</span></label>
-                    <input type="number" id="masukHarga" class="form-control" min="0" required placeholder="0" />
+                    <input type="number" id="masukHarga" class="form-control" step="any" required placeholder="0" />
                   </div>
                 </div>
                 <div class="form-group">
@@ -313,7 +313,7 @@
                 <div class="form-row">
                   <div class="form-group">
                     <label for="keluarJumlah">Jumlah Keluar <span class="req">*</span></label>
-                    <input type="number" id="keluarJumlah" class="form-control" min="1" required placeholder="0" />
+                    <input type="number" id="keluarJumlah" class="form-control" step="any" required placeholder="Jumlah keluar" />
                   </div>
                   <div class="form-group">
                     <label for="keluarJenis">Jenis Pengeluaran <span class="req">*</span></label>
@@ -484,23 +484,23 @@
               </select>
             </div>
             <div class="form-group">
-              <label for="produkStokAwal">Stok Awal</label>
-              <input type="number" id="produkStokAwal" class="form-control" min="0" value="0" placeholder="0" />
+              <label for="produkStokAwal" id="lblProdukStok">Stok Barang</label>
+              <input type="number" id="produkStokAwal" class="form-control" step="any" value="0" placeholder="Bisa berapa saja (tanpa batas)" />
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label for="produkHargaBeli">Harga Beli (Rp) <span class="req">*</span></label>
-              <input type="number" id="produkHargaBeli" class="form-control" min="0" required placeholder="0" />
+              <input type="number" id="produkHargaBeli" class="form-control" step="any" required placeholder="0" />
             </div>
             <div class="form-group">
               <label for="produkHargaJual">Harga Jual (Rp) <span class="req">*</span></label>
-              <input type="number" id="produkHargaJual" class="form-control" min="0" required placeholder="0" />
+              <input type="number" id="produkHargaJual" class="form-control" step="any" required placeholder="0" />
             </div>
           </div>
           <div class="form-group">
-            <label for="produkMinStok">Batas Stok Minimum (Alert)</label>
-            <input type="number" id="produkMinStok" class="form-control" min="0" value="5" placeholder="5" />
+            <label for="produkMinStok">Batas Stok Minimum Alert (Opsional)</label>
+            <input type="number" id="produkMinStok" class="form-control" step="any" value="0" placeholder="0 jika tidak dibatasi" />
           </div>
           <div class="form-group">
             <label for="produkDeskripsi">Deskripsi / Keterangan</label>
