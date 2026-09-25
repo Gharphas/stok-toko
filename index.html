@@ -403,36 +403,93 @@
           </div>
         </div>
 
-        <!-- Tabel Widget: Produk Paling Menguntungkan & Terlaris -->
-        <div class="card mb-3" style="margin-bottom:1.25rem;">
-          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
-            <div>
-              <h3 style="margin:0;font-size:1rem;"><i class="ri-trophy-fill text-yellow"></i> Produk Paling Menguntungkan &amp; Terlaris</h3>
-              <span style="font-size:.76rem;color:var(--text-3);" id="topProfitablePeriodDesc">Berdasarkan data penjualan periode terpilih</span>
+        <!-- ========================================================
+             ANALYTICS GRID: PRODUK TERLARIS & PALING MENGUNTUNGKAN
+             ======================================================== -->
+        <div class="dash-analytics-grid">
+
+          <!-- KARTU 1: PRODUK TERLARIS & CEPAT HABIS (TOP SELLING ITEMS) -->
+          <div class="card card-top-analytics">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.5rem;">
+              <div>
+                <h3 style="margin:0;font-size:1.02rem;display:flex;align-items:center;gap:.4rem;">
+                  <i class="ri-fire-fill text-orange"></i> Produk Terlaris (Paling Cepat Habis)
+                </h3>
+                <span style="font-size:.75rem;color:var(--text-3);" id="topSellingPeriodDesc">
+                  Barang &amp; voucher paling sering laku beserta status sisa stok
+                </span>
+              </div>
+              <span class="badge badge-orange" id="badgeTopSellingCount">Top 5 Terlaris</span>
             </div>
-            <span class="badge badge-pos" id="badgeTopCount">Top 5 Produk</span>
+
+            <!-- Filter Kategori Chip Khusus Widget Terlaris -->
+            <div class="top-selling-cat-bar" id="topSellingCatBar">
+              <button type="button" class="top-cat-chip active" data-cat="">Semua</button>
+              <button type="button" class="top-cat-chip" data-cat="Voucher & Pulsa"><i class="ri-wifi-line"></i> Voucher &amp; Pulsa</button>
+              <button type="button" class="top-cat-chip" data-cat="Rokok"><i class="ri-fire-line"></i> Rokok</button>
+              <button type="button" class="top-cat-chip" data-cat="Makanan & Minuman"><i class="ri-restaurant-line"></i> F&amp;B</button>
+              <button type="button" class="top-cat-chip" data-cat="ATK"><i class="ri-pencil-ruler-2-line"></i> ATK</button>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table" id="tableTopSelling">
+                <thead>
+                  <tr>
+                    <th style="width:36px;text-align:center;">#</th>
+                    <th>Nama Barang</th>
+                    <th style="text-align:center;">Terjual</th>
+                    <th style="text-align:center;">Sisa Stok</th>
+                    <th style="text-align:center;">Status Urgensi</th>
+                    <th style="text-align:center;width:75px;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="bodyTopSelling">
+                  <tr>
+                    <td colspan="6" class="empty-row" style="text-align:center;padding:1.5rem;">
+                      <i class="ri-loader-4-line ri-spin"></i> Menghitung produk terlaris...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div class="table-wrap">
-            <table class="data-table" id="tableTopProfitable">
-              <thead>
-                <tr>
-                  <th>Nama Barang</th>
-                  <th style="text-align:center;">Terjual</th>
-                  <th style="text-align:right;">Total Omzet</th>
-                  <th style="text-align:right;">Modal (HPP)</th>
-                  <th style="text-align:right;">Laba Bersih</th>
-                  <th style="text-align:center;">Margin</th>
-                </tr>
-              </thead>
-              <tbody id="bodyTopProfitable">
-                <tr>
-                  <td colspan="6" class="empty-row" style="text-align:center;padding:1.5rem;">
-                    <i class="ri-loader-4-line ri-spin"></i> Menghitung data keuangan...
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+
+          <!-- KARTU 2: PRODUK PALING MENGUNTUNGKAN (TOP PROFIT MARGINS) -->
+          <div class="card card-top-analytics">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.5rem;">
+              <div>
+                <h3 style="margin:0;font-size:1.02rem;display:flex;align-items:center;gap:.4rem;">
+                  <i class="ri-trophy-fill text-yellow"></i> Produk Paling Menguntungkan
+                </h3>
+                <span style="font-size:.75rem;color:var(--text-3);" id="topProfitablePeriodDesc">
+                  Kontribusi laba bersih terbesar ke toko
+                </span>
+              </div>
+              <span class="badge badge-pos" id="badgeTopProfitCount">Top 5 Laba</span>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" id="tableTopProfitable">
+                <thead>
+                  <tr>
+                    <th>Nama Barang</th>
+                    <th style="text-align:center;">Terjual</th>
+                    <th style="text-align:right;">Total Omzet</th>
+                    <th style="text-align:right;">Modal (HPP)</th>
+                    <th style="text-align:right;">Laba Bersih</th>
+                    <th style="text-align:center;">Margin</th>
+                  </tr>
+                </thead>
+                <tbody id="bodyTopProfitable">
+                  <tr>
+                    <td colspan="6" class="empty-row" style="text-align:center;padding:1.5rem;">
+                      <i class="ri-loader-4-line ri-spin"></i> Menghitung data keuangan...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
+
         </div>
 
         <!-- Ringkasan Per Jenis Produk (Voucher, Rokok, Makanan & Minuman, ATK) -->

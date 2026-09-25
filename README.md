@@ -20,7 +20,8 @@ Aplikasi **Manajemen Stok Barang & Kasir Toko (POS)** modern berbasis web dengan
   - **Modal Penjualan (HPP)**: Biaya pokok dari seluruh barang yang laku terjual.
   - **Nilai Aset Modal Stok**: Valuasi total modal barang yang tersisa di toko saat ini.
   - **Filter Periode Interaktif**: Hari Ini, 7 Hari Terakhir, Bulan Ini, dan Semua Waktu.
-  - **Tabel Top 5 Produk Paling Menguntungkan**: Peringkat produk dengan kontribusi laba terbesar.
+  - **Tampilan Produk Terlaris (*Top Selling Items*) & Paling Cepat Habis**: Peringkat volume penjualan tertinggi, bar visual penjualan, deteksi dini voucher/barang yang segera habis (*Runout Alert*), filter kategori (Voucher, Rokok, F&B, ATK), serta tombol aksi cepat *+ Restock*.
+  - **Tabel Produk Paling Menguntungkan**: Peringkat produk dengan kontribusi laba terbesar & margin %.
   - **Cetak Laporan Keuangan**: Cetak atau simpan PDF ringkasan laba rugi lengkap dengan tabel rincian dan tanda tangan penanggung jawab toko.
 
 - 🏷️ **Pemisahan Kategori Produk Toko**

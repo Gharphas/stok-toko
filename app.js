@@ -1027,12 +1027,26 @@ function calculateFinancials(period = currentDashboardPeriod) {
   const totalLabaBersih = totalOmzet - totalHpp;
   const profitMargin = totalOmzet > 0 ? ((totalLabaBersih / totalOmzet) * 100) : 0;
 
-  const topProfitable = Object.values(productProfitMap)
-    .map(p => ({
+  const allAnalyzed = Object.values(productProfitMap).map(p => {
+    const prod = products.find(pr => pr.id === p.produkId);
+    const stok = prod ? Number(prod.stok) || 0 : 0;
+    const minStok = prod ? Number(prod.minStok) || 0 : 0;
+    const kode = prod ? (prod.kode || '') : '';
+    const kategori = prod ? (prod.kategori || '') : (p.kategori || '');
+
+    return {
       ...p,
-      margin: p.omzet > 0 ? ((p.laba / p.omzet) * 100) : 0
-    }))
-    .sort((a, b) => b.laba - a.laba);
+      kode,
+      kategori,
+      stok,
+      minStok,
+      margin: p.omzet > 0 ? ((p.laba / p.omzet) * 100) : 0,
+      salesShare: totalQtySold > 0 ? Math.round((p.qty / totalQtySold) * 100) : 0
+    };
+  });
+
+  const topProfitable = [...allAnalyzed].sort((a, b) => b.laba - a.laba);
+  const topSelling = [...allAnalyzed].sort((a, b) => b.qty - a.qty);
 
   return {
     period,
@@ -1042,7 +1056,8 @@ function calculateFinancials(period = currentDashboardPeriod) {
     hpp: totalHpp,
     labaBersih: totalLabaBersih,
     marginPct: profitMargin,
-    topProfitable
+    topProfitable,
+    topSelling
   };
 }
 
@@ -1075,6 +1090,9 @@ function renderDashboard() {
 
   const topDesc = document.getElementById('topProfitablePeriodDesc');
   if (topDesc) topDesc.textContent = `Berdasarkan data penjualan: ${periodLabelMap[currentDashboardPeriod]}`;
+
+  const topSellingDesc = document.getElementById('topSellingPeriodDesc');
+  if (topSellingDesc) topSellingDesc.textContent = `Paling laku periode: ${periodLabelMap[currentDashboardPeriod]}`;
 
   // Update Buttons Period Switcher
   document.querySelectorAll('.dash-period-btn').forEach(btn => {
@@ -1127,7 +1145,8 @@ function renderDashboard() {
   const elKritis = document.getElementById('statKritis');
   if (elKritis) elKritis.textContent = kritis;
 
-  // 4. Render Tabel Produk Paling Menguntungkan
+  // 4. Render Tabel Produk Terlaris & Produk Paling Menguntungkan
+  renderTopSellingTable(fin.topSelling);
   renderTopProfitableTable(fin.topProfitable);
 
   // 5. Ringkasan per jenis produk (Voucher, Rokok, Makanan & Minuman, ATK)
@@ -1180,9 +1199,116 @@ function renderDashboard() {
   }
 }
 
+let currentTopSellingCategory = '';
+
+function renderTopSellingTable(items = null) {
+  if (!items) {
+    const fin = calculateFinancials(currentDashboardPeriod);
+    items = fin.topSelling || [];
+  }
+
+  const tbody = document.getElementById('bodyTopSelling');
+  const countBadge = document.getElementById('badgeTopSellingCount');
+  if (!tbody) return;
+
+  // Filter category if active
+  let filtered = [...items];
+  if (currentTopSellingCategory) {
+    filtered = filtered.filter(it => String(it.kategori || '').toLowerCase().trim() === currentTopSellingCategory.toLowerCase());
+  }
+
+  if (filtered.length === 0) {
+    if (countBadge) countBadge.textContent = '0 Terlaris';
+    const catLabel = currentTopSellingCategory ? `untuk kategori "${currentTopSellingCategory}"` : '';
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="empty-row" style="text-align:center;padding:2rem;">
+          <i class="ri-fire-line" style="font-size:1.8rem;color:var(--text-3);display:block;margin-bottom:.3rem;"></i>
+          <strong>Belum ada transaksi penjualan ${catLabel} pada periode ini</strong>
+          <small style="color:var(--text-3);display:block;margin-top:.2rem;">Barang yang laku di kasir akan muncul di sini beserta status sisa stok.</small>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  const topItems = filtered.slice(0, 5);
+  if (countBadge) countBadge.textContent = `Top ${topItems.length} Terlaris`;
+
+  const maxQty = Math.max(...topItems.map(it => it.qty), 1);
+
+  tbody.innerHTML = topItems.map((it, idx) => {
+    const rankClass = idx === 0 ? 'rank-1' : idx === 1 ? 'rank-2' : idx === 2 ? 'rank-3' : '';
+    const rankIcon = idx === 0 ? '<i class="ri-fire-fill" style="font-size:.78rem;"></i>' : (idx + 1);
+    const percentBar = Math.min(Math.round((it.qty / maxQty) * 100), 100);
+
+    const stok = Number(it.stok) || 0;
+    let statusBadge = '';
+    if (stok <= 0) {
+      statusBadge = `<span class="badge badge-habis" title="Stok habis sama sekali!"><i class="ri-close-circle-fill"></i> Habis (0)</span>`;
+    } else if (stok <= 3 || (it.qty >= 5 && stok <= it.qty)) {
+      statusBadge = `<span class="badge badge-kritis badge-pulse" title="Sangat cepat habis, sisa hanya ${stok} ${it.satuan}!"><i class="ri-alarm-warning-fill"></i> Cepat Habis (${stok})</span>`;
+    } else if (stok <= (it.minStok > 0 ? it.minStok : 5)) {
+      statusBadge = `<span class="badge badge-menipis" title="Stok menipis"><i class="ri-error-warning-fill"></i> Menipis (${stok})</span>`;
+    } else {
+      statusBadge = `<span class="badge badge-aman" title="Stok aman"><i class="ri-checkbox-circle-fill"></i> Aman (${stok})</span>`;
+    }
+
+    return `
+      <tr>
+        <td style="text-align:center;">
+          <span class="rank-badge ${rankClass}">${rankIcon}</span>
+        </td>
+        <td>
+          <div style="font-weight:700;color:var(--text);font-size:.88rem;line-height:1.25;">${it.nama}</div>
+          <div style="display:flex;align-items:center;gap:.4rem;margin-top:.2rem;font-size:.7rem;color:var(--text-3);">
+            ${it.kategori ? `<span class="pos-prod-cat" style="font-size:.65rem;padding:.1rem .35rem;">${it.kategori}</span>` : ''}
+            ${it.kode ? `<span><i class="ri-barcode-line"></i> ${it.kode}</span>` : ''}
+          </div>
+        </td>
+        <td style="text-align:center;">
+          <div style="font-weight:800;font-size:.9rem;color:var(--text);">${it.qty} <span style="font-size:.74rem;font-weight:600;color:var(--text-3);">${it.satuan}</span></div>
+          <div class="top-selling-bar-wrap" title="${percentBar}% penjualan tertinggi">
+            <div class="top-selling-bar" style="width:${Math.max(percentBar, 10)}%;"></div>
+          </div>
+        </td>
+        <td style="text-align:center;">
+          <strong style="font-size:.9rem;color:${stok <= 0 ? 'var(--red)' : stok <= 5 ? '#f59e0b' : 'var(--text)'};">
+            ${stok}
+          </strong> <span style="font-size:.72rem;color:var(--text-3);">${it.satuan}</span>
+        </td>
+        <td style="text-align:center;">
+          ${statusBadge}
+        </td>
+        <td style="text-align:center;">
+          <button type="button" class="btn btn-outline btn-xs btn-quick-restock" onclick="quickRestockProduct('${it.produkId}')" title="Isi stok barang masuk untuk ${it.nama}">
+            <i class="ri-add-line"></i> Restock
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+window.quickRestockProduct = function(produkId) {
+  switchTab('masuk');
+  const sel = document.getElementById('masukProduk');
+  if (sel) {
+    sel.value = produkId;
+    updateMasukPreview();
+  }
+  const qtyInp = document.getElementById('masukJumlah');
+  if (qtyInp) {
+    qtyInp.focus();
+    qtyInp.select();
+  }
+  const prod = DB.getProductById(produkId);
+  showToast(`Menyiapkan restock barang masuk untuk "${prod ? prod.nama : 'Produk'}". Silakan masukkan jumlah.`, 'info');
+};
+
 function renderTopProfitableTable(items) {
   const tbody = document.getElementById('bodyTopProfitable');
-  const countBadge = document.getElementById('badgeTopCount');
+  const countBadge = document.getElementById('badgeTopProfitCount') || document.getElementById('badgeTopCount');
   if (!tbody) return;
 
   if (!items || items.length === 0) {
@@ -1200,7 +1326,7 @@ function renderTopProfitableTable(items) {
   }
 
   const topItems = items.slice(0, 5);
-  if (countBadge) countBadge.textContent = `Top ${topItems.length} Produk`;
+  if (countBadge) countBadge.textContent = `Top ${topItems.length} Laba`;
 
   tbody.innerHTML = topItems.map((it, idx) => {
     const trophyIcon = idx === 0 ? '<i class="ri-medal-fill text-yellow" style="font-size:1.05rem;"></i> ' :
@@ -1237,6 +1363,16 @@ document.querySelectorAll('.dash-period-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     currentDashboardPeriod = btn.dataset.period || 'today';
     renderDashboard();
+  });
+});
+
+// Event Listeners Filter Kategori Chip pada Widget Produk Terlaris
+document.querySelectorAll('.top-cat-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.top-cat-chip').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTopSellingCategory = btn.dataset.cat || '';
+    renderTopSellingTable();
   });
 });
 
@@ -4190,7 +4326,9 @@ window.renderPosProductGrid = renderPosProductGrid;
 window.DB             = DB;
 window.Cart           = Cart;
 window.Auth           = Auth;
-window.calculateFinancials = calculateFinancials;
+window.renderTopSellingTable = renderTopSellingTable;
+window.quickRestockProduct   = quickRestockProduct;
+window.calculateFinancials   = calculateFinancials;
 
 async function initApp() {
   await DB.init();
