@@ -645,7 +645,12 @@ document.querySelectorAll('.bottom-nav-item').forEach(el => {
     if (navigator.vibrate) {
       try { navigator.vibrate(12); } catch {}
     }
-    switchTab(el.dataset.tab);
+    if (el.id === 'bnav-scan') {
+      openScannerModal('action');
+      return;
+    }
+    const tab = el.dataset.tab;
+    if (tab) switchTab(tab);
   });
 });
 
@@ -861,7 +866,14 @@ function renderTableProduk(filterKat = '', filterSt = '', q = '') {
     const f = filterSt || document.getElementById('filterStatus').value;
     if (f) products = products.filter(p => getStockStatus(p) === f);
   }
-  if (q) products = products.filter(p => p.nama.toLowerCase().includes(q) || p.kategori.toLowerCase().includes(q));
+  if (q) {
+    const qLower = q.toLowerCase();
+    products = products.filter(p =>
+      p.nama.toLowerCase().includes(qLower) ||
+      (p.kategori && p.kategori.toLowerCase().includes(qLower)) ||
+      (p.kode && p.kode.toLowerCase().includes(qLower))
+    );
+  }
 
   const tbody = document.getElementById('bodyProduk');
   if (!products.length) {
@@ -872,7 +884,10 @@ function renderTableProduk(filterKat = '', filterSt = '', q = '') {
     const st = getStockStatus(p);
     return `<tr>
       <td>${i+1}</td>
-      <td class="fw-bold">${p.nama}</td>
+      <td class="fw-bold">
+        ${p.nama}
+        ${p.kode ? `<br><small style="font-family:monospace;font-weight:normal;color:var(--text-3);"><i class="ri-barcode-line"></i> ${p.kode}</small>` : ''}
+      </td>
       <td>${p.kategori || '-'}</td>
       <td>${p.satuan}</td>
       <td class="fw-bold ${st === 'minus' ? 'text-red' : st === 'habis' ? 'text-red' : st === 'menipis' ? 'text-yellow' : ''}">${Number(p.stok).toLocaleString('id-ID')}</td>
@@ -902,6 +917,7 @@ document.getElementById('btnAddProduk').addEventListener('click', () => {
   editingProdukId = null;
   document.getElementById('formProduk').reset();
   document.getElementById('produkId').value = '';
+  if (document.getElementById('produkKode')) document.getElementById('produkKode').value = '';
   const lbl = document.getElementById('lblProdukStok');
   if (lbl) lbl.textContent = 'Stok Awal';
   document.getElementById('produkStokAwal').value = '0';
@@ -927,6 +943,7 @@ document.getElementById('formProduk').addEventListener('submit', async (e) => {
 
   const data = {
     id: id || '',
+    kode:       (document.getElementById('produkKode')?.value || '').trim(),
     nama:       document.getElementById('produkNama').value.trim(),
     kategori:   document.getElementById('produkKategori').value.trim(),
     satuan:     document.getElementById('produkSatuan').value,
@@ -948,6 +965,7 @@ function openEditProduk(id) {
   if (!p) return;
   editingProdukId = id;
   document.getElementById('produkId').value = p.id;
+  if (document.getElementById('produkKode')) document.getElementById('produkKode').value = p.kode || '';
   document.getElementById('produkNama').value = p.nama;
   document.getElementById('produkKategori').value = p.kategori || '';
   document.getElementById('produkSatuan').value = p.satuan;
@@ -979,7 +997,7 @@ function hapusProduk(id) {
 function populateProdukSelects() {
   const products = DB.getProducts();
   const opt = products.length
-    ? products.map(p => `<option value="${p.id}">${p.nama} (Stok: ${p.stok} ${p.satuan})</option>`).join('')
+    ? products.map(p => `<option value="${p.id}">${p.kode ? '[' + p.kode + '] ' : ''}${p.nama} (Stok: ${p.stok} ${p.satuan})</option>`).join('')
     : '<option value="" disabled>Belum ada barang — tambahkan di Katalog</option>';
 
   ['masukProduk', 'keluarProduk'].forEach(id => {
@@ -1466,6 +1484,710 @@ if (savedServer && document.getElementById('inputServerUrl')) {
 }
 
 // ============================================================
+//  MANUAL REFRESH & SINKRONISASI DATA
+// ============================================================
+let isRefreshing = false;
+async function triggerDataRefresh(showFeedback = true) {
+  if (isRefreshing) return;
+  isRefreshing = true;
+
+  const btn = document.getElementById('topbarRefreshBtn');
+  const btnModal = document.getElementById('btnManualSyncDb');
+  if (btn) btn.classList.add('spinning');
+  if (btnModal) {
+    btnModal.disabled = true;
+    btnModal.innerHTML = '<i class="ri-refresh-line"></i> Menyinkronkan...';
+  }
+
+  try {
+    const ok = await DB.fetchFromServer();
+    const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+    renderByTab(activeTab);
+    populateProdukSelects();
+
+    if (showFeedback) {
+      if (ok) {
+        if (DB._mode === 'server') {
+          showToast('Data tersinkronisasi dengan server lokal (Real-Time)!', 'success');
+        } else if (DB._mode === 'github' || DB._mode === 'raw_github') {
+          showToast('Data tersinkronisasi dari GitHub database!', 'success');
+        } else {
+          showToast('Data diperbarui (Penyimpanan lokal aman)!', 'info');
+        }
+      } else {
+        showToast('Data saat ini tersimpan aman di perangkat lokal.', 'info');
+      }
+    }
+  } catch (err) {
+    if (showFeedback) showToast('Gagal menyinkronkan data: ' + err.message, 'error');
+  } finally {
+    isRefreshing = false;
+    if (btn) {
+      setTimeout(() => btn.classList.remove('spinning'), 400);
+    }
+    if (btnModal) {
+      btnModal.disabled = false;
+      btnModal.innerHTML = '<i class="ri-refresh-line"></i> Refresh &amp; Sinkronkan Sekarang';
+    }
+  }
+}
+
+document.getElementById('topbarRefreshBtn')?.addEventListener('click', () => {
+  triggerDataRefresh(true);
+});
+
+document.getElementById('dbStatusPill')?.addEventListener('click', () => {
+  triggerDataRefresh(true);
+});
+
+document.getElementById('btnManualSyncDb')?.addEventListener('click', () => {
+  triggerDataRefresh(true);
+});
+
+// ============================================================
+//  SCAN BARCODE & INPUT DATA INSTAN
+// ============================================================
+let html5QrCode = null;
+let isScanning = false;
+let scannerTarget = 'action'; // 'action' | 'masuk' | 'keluar' | 'produk_form' | 'katalog'
+let scannerMode = 'action';   // 'action' | 'masuk' | 'keluar'
+let lastScannedCode = null;
+let lastScanTimestamp = 0;
+let currentCameraFacing = 'environment';
+let currentTorch = false;
+let currentScannedProduct = null;
+let currentScanQty = 1;
+
+function playScanBeep(success = true) {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    if (success) {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1760, ctx.currentTime);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.12);
+    } else {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(320, ctx.currentTime);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.28);
+    }
+  } catch (e) {}
+}
+
+function updateScannerModeUI() {
+  document.querySelectorAll('.scan-mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === scannerMode);
+  });
+  const sub = document.getElementById('scannerModalSub');
+  if (sub) {
+    if (scannerTarget === 'produk_form') {
+      sub.textContent = 'Arahkan kamera ke barcode untuk mengisi kode barang';
+    } else if (scannerTarget === 'katalog') {
+      sub.textContent = 'Arahkan kamera untuk mencari barang di katalog';
+    } else if (scannerMode === 'masuk') {
+      sub.textContent = 'Mode Auto Masuk: Scan otomatis catat +1 stok masuk';
+    } else if (scannerMode === 'keluar') {
+      sub.textContent = 'Mode Auto Kasir: Scan otomatis kurangi -1 stok penjualan';
+    } else {
+      sub.textContent = 'Input & cari stok instan dengan kamera atau scanner';
+    }
+  }
+}
+
+async function openScannerModal(target = 'action') {
+  scannerTarget = target;
+  if (target === 'masuk') scannerMode = 'masuk';
+  else if (target === 'keluar') scannerMode = 'keluar';
+  else if (target === 'action') scannerMode = 'action';
+
+  const modeSwitch = document.getElementById('scannerModeSwitch');
+  if (modeSwitch) {
+    modeSwitch.style.display = (target === 'produk_form' || target === 'katalog') ? 'none' : 'grid';
+  }
+
+  updateScannerModeUI();
+
+  const resCard = document.getElementById('scanResultCard');
+  if (resCard) {
+    resCard.style.display = 'none';
+    resCard.innerHTML = '';
+  }
+  const autoBanner = document.getElementById('scanAutoBanner');
+  if (autoBanner) autoBanner.style.display = 'none';
+  const hint = document.getElementById('scannerHint');
+  if (hint) hint.textContent = 'Arahkan kamera ke barcode / QR code produk';
+
+  const modal = document.getElementById('modalScanner');
+  if (modal) modal.classList.add('open');
+
+  lastScannedCode = null;
+  lastScanTimestamp = 0;
+
+  if (typeof Html5Qrcode === 'undefined') {
+    document.getElementById('scannerManualBox').style.display = 'block';
+    showToast('Scanner kamera sedang disiapkan. Anda juga dapat mengetik barcode manual di bawah.', 'info');
+    return;
+  }
+
+  try {
+    if (!html5QrCode) {
+      html5QrCode = new Html5Qrcode('scannerReader');
+    }
+
+    if (isScanning) {
+      await html5QrCode.stop();
+      isScanning = false;
+    }
+
+    const config = {
+      fps: 15,
+      qrbox: { width: 250, height: 180 },
+      aspectRatio: 1.333333
+    };
+
+    await html5QrCode.start(
+      { facingMode: currentCameraFacing },
+      config,
+      onBarcodeScanSuccess,
+      () => {}
+    );
+    isScanning = true;
+
+    try {
+      const caps = html5QrCode.getRunningTrackCapabilities();
+      const torchBtn = document.getElementById('btnToggleTorch');
+      if (torchBtn && caps.torch) {
+        torchBtn.style.display = 'inline-flex';
+      }
+    } catch {}
+
+  } catch (err) {
+    console.warn('Gagal membuka kamera facingMode:', err);
+    try {
+      const cameras = await Html5Qrcode.getCameras();
+      if (cameras && cameras.length) {
+        const camId = cameras[cameras.length - 1].id;
+        await html5QrCode.start(camId, { fps: 15, qrbox: { width: 250, height: 180 } }, onBarcodeScanSuccess, () => {});
+        isScanning = true;
+      } else {
+        throw new Error('Tidak ada perangkat kamera');
+      }
+    } catch (e2) {
+      console.warn('Kamera tidak bisa diakses:', e2);
+      document.getElementById('scannerManualBox').style.display = 'block';
+      if (hint) hint.textContent = 'Kamera tidak dapat diakses. Gunakan input manual.';
+      showToast('Kamera tidak dapat dibuka atau izin ditolak. Silakan gunakan input manual / scanner USB.', 'warning');
+    }
+  }
+}
+
+async function closeScannerModal() {
+  const modal = document.getElementById('modalScanner');
+  if (modal) modal.classList.remove('open');
+  if (html5QrCode && isScanning) {
+    try {
+      await html5QrCode.stop();
+    } catch (e) {}
+    isScanning = false;
+  }
+  const autoBanner = document.getElementById('scanAutoBanner');
+  if (autoBanner) autoBanner.style.display = 'none';
+  const resCard = document.getElementById('scanResultCard');
+  if (resCard) resCard.style.display = 'none';
+  document.getElementById('scannerManualBox').style.display = 'none';
+  lastScannedCode = null;
+}
+
+function onBarcodeScanSuccess(decodedText) {
+  const now = Date.now();
+  if (decodedText === lastScannedCode && (now - lastScanTimestamp) < 1200) {
+    return;
+  }
+  lastScannedCode = decodedText;
+  lastScanTimestamp = now;
+
+  handleScannedBarcode(decodedText);
+}
+
+async function handleScannedBarcode(rawCode) {
+  const code = (rawCode || '').trim();
+  if (!code) return;
+
+  const products = DB.getProducts();
+  const codeLower = code.toLowerCase();
+  const found = products.find(p =>
+    (p.kode && p.kode.toLowerCase() === codeLower) ||
+    p.id === code ||
+    p.nama.toLowerCase() === codeLower
+  );
+
+  playScanBeep(!!found);
+  if (navigator.vibrate) {
+    try { navigator.vibrate(found ? 70 : [50, 50, 50]); } catch {}
+  }
+
+  // 1. Target: FORM TAMBAH/EDIT PRODUK
+  if (scannerTarget === 'produk_form') {
+    const inp = document.getElementById('produkKode');
+    if (inp) inp.value = code;
+    await closeScannerModal();
+    showToast(`Barcode "${code}" berhasil disematkan ke barang!`, 'success');
+    return;
+  }
+
+  // 2. Target: TAB BARANG MASUK
+  if (scannerTarget === 'masuk') {
+    if (found) {
+      const sel = document.getElementById('masukProduk');
+      if (sel) sel.value = found.id;
+      updateMasukPreview();
+      await closeScannerModal();
+      const qtyInp = document.getElementById('masukJumlah');
+      if (qtyInp) {
+        qtyInp.focus();
+        qtyInp.select();
+      }
+      showToast(`Barang "${found.nama}" dipilih! Silakan isi jumlah masuk.`, 'success');
+    } else {
+      renderNotFoundCard(code);
+    }
+    return;
+  }
+
+  // 3. Target: TAB BARANG KELUAR
+  if (scannerTarget === 'keluar') {
+    if (found) {
+      const sel = document.getElementById('keluarProduk');
+      if (sel) sel.value = found.id;
+      updateKeluarPreview();
+      await closeScannerModal();
+      const qtyInp = document.getElementById('keluarJumlah');
+      if (qtyInp) {
+        qtyInp.focus();
+        qtyInp.select();
+      }
+      showToast(`Barang "${found.nama}" dipilih! Silakan isi jumlah keluar.`, 'success');
+    } else {
+      renderNotFoundCard(code);
+    }
+    return;
+  }
+
+  // 4. Target: KATALOG CARI
+  if (scannerTarget === 'katalog') {
+    if (found) {
+      await closeScannerModal();
+      switchTab('produk');
+      const s = document.getElementById('globalSearch');
+      if (s) s.value = found.nama;
+      filterAndRenderProduk(found.nama.toLowerCase());
+      showToast(`Menemukan "${found.nama}" di katalog`, 'info');
+    } else {
+      renderNotFoundCard(code);
+    }
+    return;
+  }
+
+  // 5. Universal Quick Scan ('action')
+  if (scannerMode === 'masuk') {
+    if (found) {
+      try {
+        await DB.catatMasuk({
+          produkId: found.id,
+          jumlah: 1,
+          hargaBeli: found.hargaBeli,
+          keterangan: 'Scan Cepat Auto Masuk (+1)'
+        });
+        showAutoScanBanner('masuk', found, 1);
+        populateProdukSelects();
+        const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+        renderByTab(activeTab);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    } else {
+      renderNotFoundCard(code);
+    }
+    return;
+  }
+
+  if (scannerMode === 'keluar') {
+    if (found) {
+      try {
+        await DB.catatKeluar({
+          produkId: found.id,
+          jumlah: 1,
+          jenisKeluar: 'penjualan',
+          keterangan: 'Scan Cepat Kasir (-1)'
+        });
+        showAutoScanBanner('keluar', found, 1);
+        populateProdukSelects();
+        const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+        renderByTab(activeTab);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    } else {
+      renderNotFoundCard(code);
+    }
+    return;
+  }
+
+  if (found) {
+    renderScanResultCard(found, code);
+  } else {
+    renderNotFoundCard(code);
+  }
+}
+
+function showAutoScanBanner(type, prod, qty) {
+  const b = document.getElementById('scanAutoBanner');
+  if (!b) return;
+  const isMasuk = type === 'masuk';
+  const updatedStok = Number(prod.stok);
+  b.innerHTML = `
+    <div class="scan-banner-success" style="border-left:4px solid ${isMasuk ? 'var(--green)' : 'var(--red)'};">
+      <i class="${isMasuk ? 'ri-arrow-down-circle-fill text-green' : 'ri-arrow-up-circle-fill text-red'}" style="font-size:1.3rem;"></i>
+      <div style="flex:1;">
+        <div style="font-weight:700;">${isMasuk ? '+'+qty : '-'+qty} ${prod.satuan} ${prod.nama}</div>
+        <div style="font-size:.74rem;color:var(--text-2);">
+          ${isMasuk ? 'Barang masuk tercatat!' : 'Penjualan kasir tercatat!'} &bull; Stok saat ini: <strong>${updatedStok} ${prod.satuan}</strong>
+        </div>
+      </div>
+    </div>
+  `;
+  b.style.display = 'block';
+
+  clearTimeout(b._timer);
+  b._timer = setTimeout(() => {
+    b.style.display = 'none';
+  }, 4000);
+}
+
+function renderScanResultCard(p, scannedCode) {
+  currentScannedProduct = p;
+  currentScanQty = 1;
+
+  const card = document.getElementById('scanResultCard');
+  if (!card) return;
+
+  const st = getStockStatus(p);
+
+  card.innerHTML = `
+    <div class="scan-res-header">
+      <div>
+        <div class="scan-res-title">${p.nama}</div>
+        <div class="scan-res-meta">
+          <span>${p.kategori || 'Umum'}</span> &bull; 
+          <span class="scan-res-code"><i class="ri-barcode-line"></i> ${p.kode || p.id}</span>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <span class="badge ${st === 'aman' ? 'badge-aman' : st === 'menipis' ? 'badge-menipis' : 'badge-habis'}">
+          ${p.stok} ${p.satuan}
+        </span>
+        <div style="font-size:.78rem;font-weight:700;color:var(--primary);margin-top:.2rem;">
+          ${formatRupiah(p.hargaJual)}
+        </div>
+      </div>
+    </div>
+
+    <!-- Stepper Qty Input -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:.5rem 0 .25rem;">
+      <span style="font-size:.8rem;font-weight:600;color:var(--text-2);">Jumlah Barang:</span>
+      <div style="display:flex;align-items:center;gap:.35rem;">
+        <button type="button" class="scan-qty-btn" id="btnScanQtyMinus"><i class="ri-subtract-line"></i></button>
+        <input type="number" id="scanQtyInput" class="scan-qty-input" value="1" min="1" step="any" style="width:65px;" />
+        <button type="button" class="scan-qty-btn" id="btnScanQtyPlus"><i class="ri-add-line"></i></button>
+      </div>
+    </div>
+
+    <!-- Action Buttons Grid -->
+    <div class="scan-actions-grid" style="margin-top:.65rem;">
+      <button type="button" class="btn btn-success btn-sm btn-block" id="btnExecScanMasuk">
+        <i class="ri-arrow-down-circle-fill"></i> + Masuk Stok
+      </button>
+      <button type="button" class="btn btn-danger btn-sm btn-block" id="btnExecScanKeluar">
+        <i class="ri-shopping-cart-fill"></i> - Kasir / Keluar
+      </button>
+    </div>
+
+    <div style="display:flex;gap:.4rem;margin-top:.5rem;">
+      <button type="button" class="btn btn-ghost btn-sm" id="btnScanOpname" style="flex:1;font-size:.76rem;">
+        <i class="ri-calculator-line"></i> Hitung Stok
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" id="btnScanEdit" style="flex:1;font-size:.76rem;">
+        <i class="ri-edit-line"></i> Edit Produk
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" id="btnScanNext" style="font-size:.76rem;" title="Scan Barang Lain">
+        <i class="ri-refresh-line"></i> Scan Lain
+      </button>
+    </div>
+  `;
+
+  card.style.display = 'block';
+
+  const qtyInp = document.getElementById('scanQtyInput');
+  document.getElementById('btnScanQtyMinus')?.addEventListener('click', () => {
+    let val = Number(qtyInp.value) || 1;
+    if (val > 1) val -= 1;
+    qtyInp.value = val;
+    currentScanQty = val;
+  });
+  document.getElementById('btnScanQtyPlus')?.addEventListener('click', () => {
+    let val = Number(qtyInp.value) || 0;
+    val += 1;
+    qtyInp.value = val;
+    currentScanQty = val;
+  });
+  qtyInp?.addEventListener('input', () => {
+    currentScanQty = Number(qtyInp.value) || 1;
+  });
+
+  document.getElementById('btnExecScanMasuk')?.addEventListener('click', async () => {
+    const qty = Number(qtyInp.value) || 1;
+    try {
+      await DB.catatMasuk({
+        produkId: p.id,
+        jumlah: qty,
+        hargaBeli: p.hargaBeli,
+        keterangan: 'Scan Cepat Barang Masuk'
+      });
+      showToast(`+${qty} ${p.satuan} "${p.nama}" berhasil ditambahkan ke database!`, 'success');
+      populateProdukSelects();
+      const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+      renderByTab(activeTab);
+      p.stok = Number(p.stok) + qty;
+      renderScanResultCard(p, scannedCode);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  document.getElementById('btnExecScanKeluar')?.addEventListener('click', async () => {
+    const qty = Number(qtyInp.value) || 1;
+    try {
+      await DB.catatKeluar({
+        produkId: p.id,
+        jumlah: qty,
+        jenisKeluar: 'penjualan',
+        keterangan: 'Scan Cepat Kasir / Penjualan'
+      });
+      showToast(`-${qty} ${p.satuan} "${p.nama}" berhasil dicatat sebagai penjualan!`, 'success');
+      populateProdukSelects();
+      const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+      renderByTab(activeTab);
+      p.stok = Number(p.stok) - qty;
+      renderScanResultCard(p, scannedCode);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  document.getElementById('btnScanOpname')?.addEventListener('click', async () => {
+    await closeScannerModal();
+    switchTab('opname');
+    showToast(`Pilih penyesuaian stok untuk "${p.nama}"`, 'info');
+  });
+
+  document.getElementById('btnScanEdit')?.addEventListener('click', async () => {
+    await closeScannerModal();
+    openEditProduk(p.id);
+  });
+
+  document.getElementById('btnScanNext')?.addEventListener('click', () => {
+    card.style.display = 'none';
+    lastScannedCode = null;
+  });
+}
+
+function renderNotFoundCard(code) {
+  const card = document.getElementById('scanResultCard');
+  if (!card) return;
+
+  card.innerHTML = `
+    <div style="text-align:center;padding:.85rem .5rem;">
+      <i class="ri-error-warning-line text-yellow" style="font-size:2.2rem;display:inline-block;margin-bottom:.3rem;"></i>
+      <h4 style="font-size:.95rem;margin-bottom:.2rem;">Barcode Belum Terdaftar</h4>
+      <div style="margin-bottom:.5rem;">
+        <code style="font-family:monospace;background:var(--surface);border:1px solid var(--border);padding:.2rem .6rem;border-radius:4px;font-size:.88rem;color:var(--primary);font-weight:700;">${code}</code>
+      </div>
+      <p style="font-size:.76rem;color:var(--text-2);margin-bottom:.85rem;line-height:1.4;">
+        Barang dengan barcode ini belum ada di database katalog Anda. Daftarkan sekarang dengan 1-klik:
+      </p>
+      <div style="display:flex;gap:.5rem;justify-content:center;">
+        <button type="button" class="btn btn-primary btn-sm" id="btnRegisterNewFromScan">
+          <i class="ri-add-line"></i> Tambah Sebagai Barang Baru
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnRescanFromCard">
+          <i class="ri-refresh-line"></i> Scan Ulang
+        </button>
+      </div>
+    </div>
+  `;
+  card.style.display = 'block';
+
+  document.getElementById('btnRegisterNewFromScan')?.addEventListener('click', async () => {
+    await closeScannerModal();
+    editingProdukId = null;
+    document.getElementById('formProduk').reset();
+    document.getElementById('produkId').value = '';
+    if (document.getElementById('produkKode')) {
+      document.getElementById('produkKode').value = code;
+    }
+    const lbl = document.getElementById('lblProdukStok');
+    if (lbl) lbl.textContent = 'Stok Awal';
+    document.getElementById('produkStokAwal').value = '0';
+    document.getElementById('produkMinStok').value = '0';
+    document.getElementById('modalProdukTitle').textContent = 'Tambah Barang Baru';
+    document.getElementById('saveProdukBtn').textContent = 'Simpan Barang';
+    document.getElementById('modalProduk').classList.add('open');
+    document.getElementById('produkNama').focus();
+    showToast(`Barcode ${code} disematkan. Silakan isi nama & harga barang.`, 'info');
+  });
+
+  document.getElementById('btnRescanFromCard')?.addEventListener('click', () => {
+    card.style.display = 'none';
+    lastScannedCode = null;
+  });
+}
+
+// Event Listeners Scanner
+document.getElementById('topbarScanBtn')?.addEventListener('click', () => {
+  openScannerModal('action');
+});
+document.getElementById('btnScanKatalog')?.addEventListener('click', () => {
+  openScannerModal('katalog');
+});
+document.getElementById('btnScanMasuk')?.addEventListener('click', () => {
+  openScannerModal('masuk');
+});
+document.getElementById('btnScanKeluar')?.addEventListener('click', () => {
+  openScannerModal('keluar');
+});
+document.getElementById('btnScanBarcodeForm')?.addEventListener('click', () => {
+  openScannerModal('produk_form');
+});
+document.getElementById('closeScannerModal')?.addEventListener('click', () => {
+  closeScannerModal();
+});
+document.getElementById('modalScanner')?.addEventListener('click', (e) => {
+  if (e.target === document.getElementById('modalScanner')) {
+    closeScannerModal();
+  }
+});
+
+// Mode switch click events
+document.getElementById('btnModeAction')?.addEventListener('click', () => {
+  scannerMode = 'action';
+  updateScannerModeUI();
+});
+document.getElementById('btnModeMasuk')?.addEventListener('click', () => {
+  scannerMode = 'masuk';
+  updateScannerModeUI();
+});
+document.getElementById('btnModeKeluar')?.addEventListener('click', () => {
+  scannerMode = 'keluar';
+  updateScannerModeUI();
+});
+
+// Switch Camera Front / Back
+document.getElementById('btnSwitchCamera')?.addEventListener('click', async () => {
+  currentCameraFacing = currentCameraFacing === 'environment' ? 'user' : 'environment';
+  if (isScanning && html5QrCode) {
+    await html5QrCode.stop();
+    isScanning = false;
+  }
+  openScannerModal(scannerTarget);
+});
+
+// Toggle Senter / Torch
+document.getElementById('btnToggleTorch')?.addEventListener('click', async () => {
+  if (html5QrCode && isScanning) {
+    try {
+      currentTorch = !currentTorch;
+      await html5QrCode.applyVideoConstraints({
+        advanced: [{ torch: currentTorch }]
+      });
+      document.getElementById('btnToggleTorch').classList.toggle('active', currentTorch);
+    } catch (e) {
+      console.warn('Torch error:', e);
+    }
+  }
+});
+
+// Toggle Manual Barcode Input
+document.getElementById('btnToggleManualInput')?.addEventListener('click', () => {
+  const box = document.getElementById('scannerManualBox');
+  if (!box) return;
+  const isHidden = box.style.display === 'none' || !box.style.display;
+  box.style.display = isHidden ? 'block' : 'none';
+  if (isHidden) {
+    const inp = document.getElementById('manualBarcodeInput');
+    if (inp) {
+      inp.focus();
+      inp.select();
+    }
+  }
+});
+
+// Submit Manual Barcode
+document.getElementById('btnSubmitManualBarcode')?.addEventListener('click', () => {
+  const inp = document.getElementById('manualBarcodeInput');
+  if (inp && inp.value.trim()) {
+    handleScannedBarcode(inp.value.trim());
+    inp.value = '';
+  }
+});
+document.getElementById('manualBarcodeInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const val = e.target.value.trim();
+    if (val) {
+      handleScannedBarcode(val);
+      e.target.value = '';
+    }
+  }
+});
+
+// Listener Hardware USB / Bluetooth Barcode Scanner
+let hwBarcodeBuffer = '';
+let hwBarcodeLastTime = 0;
+window.addEventListener('keydown', (e) => {
+  const target = e.target;
+  const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+  if (isInput && target.id !== 'manualBarcodeInput') return;
+
+  const now = Date.now();
+  if (now - hwBarcodeLastTime > 120) {
+    hwBarcodeBuffer = '';
+  }
+  hwBarcodeLastTime = now;
+
+  if (e.key === 'Enter') {
+    if (hwBarcodeBuffer.length >= 3) {
+      const code = hwBarcodeBuffer;
+      hwBarcodeBuffer = '';
+      openScannerModal('action');
+      handleScannedBarcode(code);
+    }
+  } else if (e.key.length === 1) {
+    hwBarcodeBuffer += e.key;
+  }
+});
+
+// ============================================================
 //  AUTO-SYNC BACKGROUND (Sync Multi-device Laptop & HP Real-Time)
 // ============================================================
 setInterval(async () => {
@@ -1477,7 +2199,6 @@ setInterval(async () => {
       const curTxs = DB.getTransactions().length;
       const curProds = JSON.stringify(DB.getProducts());
       if (prevTxs !== curTxs || prevProds !== curProds) {
-        // Terjadi update dari HP atau perangkat lain!
         const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
         renderByTab(activeTab);
       }
@@ -1499,6 +2220,9 @@ window.openEditProduk = openEditProduk;
 window.hapusProduk    = hapusProduk;
 window.updateDiff     = updateDiff;
 window.switchTab      = switchTab;
+window.triggerDataRefresh = triggerDataRefresh;
+window.openScannerModal   = openScannerModal;
+window.closeScannerModal  = closeScannerModal;
 
 async function initApp() {
   await DB.init();

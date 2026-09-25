@@ -95,12 +95,20 @@
           <i class="ri-menu-3-line"></i>
         </button>
         <h1 class="topbar-title" id="topbarTitle">Dashboard</h1>
-        <div class="db-status-pill" id="dbStatusPill" title="Status Sinkronisasi Database">
+        <div class="db-status-pill" id="dbStatusPill" title="Status Sinkronisasi Database (Klik untuk Refresh & Sinkronkan)">
           <span class="db-dot"></span>
           <span id="dbStatusText">Menyambungkan...</span>
         </div>
       </div>
       <div class="topbar-right">
+        <button class="topbar-scan-btn" id="topbarScanBtn" title="Scan Barcode &amp; Input Instan" aria-label="Scan Barcode">
+          <i class="ri-qr-scan-2-line"></i>
+          <span class="scan-label">Scan Barcode</span>
+        </button>
+        <button class="topbar-refresh-btn" id="topbarRefreshBtn" title="Refresh &amp; Sinkronkan Data" aria-label="Refresh &amp; Sinkronkan Data">
+          <i class="ri-refresh-line" id="topbarRefreshIcon"></i>
+          <span class="refresh-label">Refresh</span>
+        </button>
         <button class="topbar-phone-btn" id="topbarPhoneBtn" title="Buka di Handphone" aria-label="Buka di Handphone">
           <i class="ri-smartphone-line"></i>
           <span class="hp-badge">HP</span>
@@ -196,9 +204,14 @@
               <option value="habis">Stok Habis</option>
             </select>
           </div>
-          <button class="btn btn-primary" id="btnAddProduk">
-            <i class="ri-add-line"></i> Tambah Barang
-          </button>
+          <div style="display:flex;gap:.5rem;">
+            <button class="btn btn-outline-primary" id="btnScanKatalog" title="Cari barang dengan scan barcode">
+              <i class="ri-qr-scan-2-line"></i> Scan Barcode
+            </button>
+            <button class="btn btn-primary" id="btnAddProduk">
+              <i class="ri-add-line"></i> Tambah Barang
+            </button>
+          </div>
         </div>
         <div class="card">
           <div class="table-wrap">
@@ -238,7 +251,12 @@
             <div class="card-body">
               <form id="formMasuk" autocomplete="off">
                 <div class="form-group">
-                  <label for="masukProduk">Pilih Barang <span class="req">*</span></label>
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem;">
+                    <label for="masukProduk" style="margin-bottom:0;">Pilih Barang <span class="req">*</span></label>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btnScanMasuk" style="padding:.2rem .55rem;font-size:.78rem;color:var(--primary);">
+                      <i class="ri-qr-scan-2-line"></i> Scan Barcode
+                    </button>
+                  </div>
                   <select id="masukProduk" class="form-control" required>
                     <option value="">-- Pilih Barang --</option>
                   </select>
@@ -301,7 +319,12 @@
             <div class="card-body">
               <form id="formKeluar" autocomplete="off">
                 <div class="form-group">
-                  <label for="keluarProduk">Pilih Barang <span class="req">*</span></label>
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem;">
+                    <label for="keluarProduk" style="margin-bottom:0;">Pilih Barang <span class="req">*</span></label>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btnScanKeluar" style="padding:.2rem .55rem;font-size:.78rem;color:var(--primary);">
+                      <i class="ri-qr-scan-2-line"></i> Scan Barcode
+                    </button>
+                  </div>
                   <select id="keluarProduk" class="form-control" required>
                     <option value="">-- Pilih Barang --</option>
                   </select>
@@ -461,6 +484,17 @@
               <input type="text" id="produkNama" class="form-control" required placeholder="Nama barang" />
             </div>
             <div class="form-group">
+              <label for="produkKode">Barcode / SKU (Opsional)</label>
+              <div style="display:flex;gap:.4rem;">
+                <input type="text" id="produkKode" class="form-control" placeholder="Scan atau ketik barcode..." />
+                <button type="button" class="btn btn-ghost btn-sm" id="btnScanBarcodeForm" title="Scan Barcode dengan Kamera" style="padding:.35rem .65rem;flex-shrink:0;">
+                  <i class="ri-qr-scan-2-line"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
               <label for="produkKategori">Kategori <span class="req">*</span></label>
               <input type="text" id="produkKategori" class="form-control" required placeholder="e.g. Sembako, Minuman"
                 list="kategoriList" />
@@ -512,6 +546,83 @@
             <button type="submit" class="btn btn-primary" id="saveProdukBtn">Simpan Barang</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: SCAN BARCODE PRODUK ===================== -->
+  <div class="modal-overlay" id="modalScanner">
+    <div class="modal-box modal-scanner">
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:.5rem;">
+          <div class="scanner-header-icon"><i class="ri-qr-scan-2-line"></i></div>
+          <div>
+            <h3 style="margin:0;font-size:1.05rem;" id="scannerModalTitle">Scan Barcode Produk</h3>
+            <span style="font-size:.74rem;color:var(--text-3);" id="scannerModalSub">Input &amp; cari stok instan dengan kamera</span>
+          </div>
+        </div>
+        <button class="modal-close" id="closeScannerModal" aria-label="Tutup"><i class="ri-close-line"></i></button>
+      </div>
+      <div class="modal-body" style="padding:1rem;">
+        
+        <!-- Pilihan Mode Cepat -->
+        <div class="scanner-mode-switch" id="scannerModeSwitch">
+          <button type="button" class="scan-mode-btn active" data-mode="action" id="btnModeAction">
+            <i class="ri-flashlight-line"></i> Aksi Cepat
+          </button>
+          <button type="button" class="scan-mode-btn" data-mode="masuk" id="btnModeMasuk">
+            <i class="ri-arrow-down-circle-line"></i> Auto Masuk (+1)
+          </button>
+          <button type="button" class="scan-mode-btn" data-mode="keluar" id="btnModeKeluar">
+            <i class="ri-arrow-up-circle-line"></i> Auto Kasir (-1)
+          </button>
+        </div>
+
+        <!-- Kamera Viewfinder Area -->
+        <div class="scanner-viewfinder-wrap">
+          <div id="scannerReader"></div>
+          
+          <!-- Overlay Animasi Laser & Corner Brackets -->
+          <div class="scanner-overlay" id="scannerOverlay">
+            <div class="scanner-corner top-left"></div>
+            <div class="scanner-corner top-right"></div>
+            <div class="scanner-corner bottom-left"></div>
+            <div class="scanner-corner bottom-right"></div>
+            <div class="scanner-laser"></div>
+            <div class="scanner-hint" id="scannerHint">Arahkan kamera ke barcode / QR code produk</div>
+          </div>
+        </div>
+
+        <!-- Kontrol Kamera -->
+        <div class="scanner-controls">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnSwitchCamera">
+            <i class="ri-camera-switch-line"></i> Ganti Kamera
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnToggleTorch" style="display:none;">
+            <i class="ri-flashlight-line"></i> Senter
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnToggleManualInput">
+            <i class="ri-keyboard-line"></i> Input Manual
+          </button>
+        </div>
+
+        <!-- Input Manual / USB Scanner -->
+        <div class="scanner-manual-box" id="scannerManualBox" style="display:none;">
+          <div style="display:flex;gap:.4rem;">
+            <input type="text" id="manualBarcodeInput" class="form-control form-control-sm" placeholder="Ketik barcode/SKU/nama..." autocomplete="off" />
+            <button type="button" class="btn btn-primary btn-sm" id="btnSubmitManualBarcode">Cari</button>
+          </div>
+          <span style="font-size:.72rem;color:var(--text-3);margin-top:.3rem;display:block;">
+            💡 Scanner barcode USB / Bluetooth otomatis terdeteksi tanpa perlu diketik manual.
+          </span>
+        </div>
+
+        <!-- Banner Auto Input Notification -->
+        <div id="scanAutoBanner" style="display:none;"></div>
+
+        <!-- Kartu Hasil Scan (Instant Action Card) -->
+        <div class="scan-result-card" id="scanResultCard" style="display:none;"></div>
+
       </div>
     </div>
   </div>
@@ -624,6 +735,12 @@
           </p>
         </div>
 
+        <div style="margin-bottom:1rem;">
+          <button type="button" class="btn btn-primary btn-sm btn-block" id="btnManualSyncDb">
+            <i class="ri-refresh-line"></i> Refresh &amp; Sinkronkan Sekarang
+          </button>
+        </div>
+
         <!-- Sinkronisasi Antar HP / Kode Sync Instan -->
         <div class="db-sync-box" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.85rem;margin:1rem 0;">
           <h4 style="font-size:.85rem;margin-bottom:.35rem;display:flex;align-items:center;gap:.4rem;">
@@ -702,6 +819,10 @@
       <i class="ri-archive-line"></i>
       <span>Katalog</span>
     </button>
+    <button type="button" class="bottom-nav-item bnav-scan-highlight" id="bnav-scan" title="Scan Barcode">
+      <i class="ri-qr-scan-2-line"></i>
+      <span>Scan</span>
+    </button>
     <button type="button" class="bottom-nav-item" data-tab="masuk" id="bnav-masuk">
       <i class="ri-arrow-down-circle-line"></i>
       <span>Masuk</span>
@@ -710,16 +831,18 @@
       <i class="ri-arrow-up-circle-line"></i>
       <span>Keluar</span>
     </button>
-    <button type="button" class="bottom-nav-item" data-tab="opname" id="bnav-opname">
-      <i class="ri-calculator-line"></i>
-      <span>Hitung</span>
-    </button>
     <button type="button" class="bottom-nav-item" data-tab="riwayat" id="bnav-riwayat">
       <i class="ri-history-line"></i>
       <span>Mutasi</span>
     </button>
   </nav>
 
+  <script src="html5-qrcode.min.js"></script>
+  <script>
+    if (typeof Html5Qrcode === 'undefined') {
+      document.write('<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"><\/script>');
+    }
+  </script>
   <script src="app.js"></script>
 </body>
 

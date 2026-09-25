@@ -1,6 +1,59 @@
 {
-  "products": [],
+  "products": [
+    {
+      "id": "mudw3n9jwzlb",
+      "nama": "vocer 3, 6 GB 1 hr",
+      "kategori": "kuota internet",
+      "satuan": "Pcs",
+      "stok": 12,
+      "minStok": 12,
+      "hargaBeli": 8000,
+      "hargaJual": 10000,
+      "deskripsi": "",
+      "updatedAt": "2026-09-23T09:17:38.311Z",
+      "createdAt": "2026-09-23T09:17:38.311Z"
+    },
+    {
+      "id": "mudw5h0jubwl",
+      "nama": "vocer 3, 7GB 2h",
+      "kategori": "kuota internet",
+      "satuan": "Pcs",
+      "stok": 11,
+      "minStok": 12,
+      "hargaBeli": 10000,
+      "hargaJual": 12000,
+      "deskripsi": "",
+      "updatedAt": "2026-09-23T09:19:03.523Z",
+      "createdAt": "2026-09-23T09:19:03.523Z"
+    },
+    {
+      "id": "mudw74o7ye59",
+      "nama": "vocer 3, 11 gb 3h",
+      "kategori": "kuota internet",
+      "satuan": "Pcs",
+      "stok": 6,
+      "minStok": 12,
+      "hargaBeli": 13000,
+      "hargaJual": 16000,
+      "deskripsi": "",
+      "updatedAt": "2026-09-23T09:20:20.839Z",
+      "createdAt": "2026-09-23T09:20:20.839Z"
+    },
+    {
+      "id": "mudwa537kqbz",
+      "nama": "vocer 3, 15 gb 7h",
+      "kategori": "kuota internet",
+      "satuan": "Pcs",
+      "stok": 3,
+      "minStok": 6,
+      "hargaBeli": 23000,
+      "hargaJual": 2600,
+      "deskripsi": "",
+      "updatedAt": "2026-09-23T09:22:41.347Z",
+      "createdAt": "2026-09-23T09:22:41.347Z"
+    }
+  ],
   "transactions": [],
   "opnames": [],
-  "lastUpdated": "2026-09-23T08:48:40.512Z"
+  "lastUpdated": "2026-09-23T09:22:41.347Z"
 }
