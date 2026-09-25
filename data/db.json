@@ -55,5 +55,23 @@
   ],
   "transactions": [],
   "opnames": [],
-  "lastUpdated": "2026-09-23T09:22:41.347Z"
+  "lastUpdated": "2026-09-25T08:27:31.968Z",
+  "users": [
+    {
+      "id": "usr_admin",
+      "username": "admin",
+      "password": "admin123",
+      "name": "Agung (Pemilik)",
+      "role": "admin",
+      "createdAt": "2026-09-25T08:27:31.967Z"
+    },
+    {
+      "id": "usr_kasir",
+      "username": "kasir",
+      "password": "kasir123",
+      "name": "Kasir Toko",
+      "role": "kasir",
+      "createdAt": "2026-09-25T08:27:31.968Z"
+    }
+  ]
 }

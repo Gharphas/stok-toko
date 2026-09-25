@@ -22,6 +22,101 @@
 </head>
 
 <body>
+  <!-- ===================== LOGIN SCREEN OVERLAY ===================== -->
+  <div id="loginScreen" class="login-screen-overlay">
+    <div class="login-container">
+      <div class="login-card">
+        <!-- Brand Header -->
+        <div class="login-brand">
+          <div class="login-logo-glow">
+            <div class="login-logo-icon">
+              <i class="ri-store-3-fill"></i>
+            </div>
+          </div>
+          <h2 class="login-brand-title">Agung Cell</h2>
+          <p class="login-brand-sub">Sistem Manajemen &amp; Hitung Stok Toko</p>
+        </div>
+
+        <!-- Alert Error Message -->
+        <div class="login-alert" id="loginAlert" style="display:none;" role="alert">
+          <i class="ri-error-warning-fill"></i>
+          <span id="loginAlertText">Username atau kata sandi tidak cocok</span>
+        </div>
+
+        <!-- Login Form -->
+        <form id="loginForm" class="login-form" autocomplete="on">
+          <div class="login-field">
+            <label for="loginUsername" class="login-label">Nama Pengguna (Username)</label>
+            <div class="login-input-wrap">
+              <i class="ri-user-3-line login-input-icon"></i>
+              <input type="text" id="loginUsername" class="login-input" placeholder="Cth: admin / kasir" required autofocus autocomplete="username" />
+            </div>
+          </div>
+
+          <div class="login-field">
+            <div class="login-label-row">
+              <label for="loginPassword" class="login-label">Kata Sandi (Password)</label>
+            </div>
+            <div class="login-input-wrap">
+              <i class="ri-lock-2-line login-input-icon"></i>
+              <input type="password" id="loginPassword" class="login-input" placeholder="Masukkan kata sandi" required autocomplete="current-password" />
+              <button type="button" class="login-pwd-toggle" id="btnToggleLoginPwd" title="Tampilkan / Sembunyikan Kata Sandi" aria-label="Toggle Password Visibility">
+                <i class="ri-eye-line" id="iconToggleLoginPwd"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="login-options-row">
+            <label class="login-remember-wrap">
+              <input type="checkbox" id="loginRemember" checked />
+              <span>Ingat sesi saya di perangkat ini</span>
+            </label>
+          </div>
+
+          <button type="submit" class="login-btn-submit" id="btnLoginSubmit">
+            <span class="btn-text"><i class="ri-login-box-line"></i> Masuk Sekarang</span>
+            <span class="btn-spinner" style="display:none;"><i class="ri-loader-4-line ri-spin"></i> Memeriksa...</span>
+          </button>
+        </form>
+
+        <!-- Quick 1-Click Login for Fast Operational Switching -->
+        <div class="login-quick-section">
+          <div class="login-divider">
+            <span>atau pilih login instan (1-klik)</span>
+          </div>
+          <div class="login-quick-grid">
+            <button type="button" class="btn-quick-login btn-quick-admin" id="btnQuickLoginAdmin" title="Masuk langsung sebagai Pemilik / Admin">
+              <span class="quick-icon"><i class="ri-shield-user-fill"></i></span>
+              <div class="quick-meta">
+                <strong class="quick-title">Pemilik (Admin)</strong>
+                <small class="quick-sub">Akses penuh sistem</small>
+              </div>
+            </button>
+            <button type="button" class="btn-quick-login btn-quick-kasir" id="btnQuickLoginKasir" title="Masuk langsung sebagai Kasir Toko">
+              <span class="quick-icon"><i class="ri-shopping-cart-2-fill"></i></span>
+              <div class="quick-meta">
+                <strong class="quick-title">Kasir Toko</strong>
+                <small class="quick-sub">Operasional transaksi</small>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Default Credentials Info -->
+        <div class="login-info-box">
+          <i class="ri-information-line"></i>
+          <div>
+            <strong>Akun Bawaan Sistem:</strong>
+            <div class="cred-pill-group">
+              <span class="cred-pill"><strong>admin</strong> : admin123</span>
+              <span class="cred-pill"><strong>kasir</strong> : kasir123</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div id="toast" class="toast" role="alert" aria-live="polite"></div>
 
@@ -79,6 +174,20 @@
         <i class="ri-database-2-line"></i>
         <span>Kelola Database</span>
       </button>
+      <!-- Sidebar User Card -->
+      <div class="sidebar-user-card" id="sidebarUserCard">
+        <div class="sidebar-user-avatar" id="sidebarAvatarWrap">
+          <i class="ri-shield-user-fill" id="sidebarAvatarIcon"></i>
+        </div>
+        <div class="sidebar-user-info">
+          <span class="sidebar-user-name" id="sidebarUserName">Admin</span>
+          <span class="sidebar-user-role" id="sidebarUserRole">Pemilik Toko</span>
+        </div>
+        <button type="button" class="sidebar-logout-btn" id="sidebarLogoutBtn" title="Keluar / Logout">
+          <i class="ri-logout-box-r-line"></i>
+        </button>
+      </div>
+
       <button class="theme-toggle-btn" id="themeToggle" title="Ganti Tema">
         <i class="ri-moon-line" id="themeIcon"></i>
         <span id="themeLabel">Mode Gelap</span>
@@ -120,6 +229,47 @@
           <i class="ri-search-line"></i>
           <input type="text" id="globalSearch" placeholder="Cari barang..." autocomplete="off" />
         </div>
+
+        <!-- User Profile Pill & Dropdown -->
+        <div class="user-menu-wrapper" id="userMenuWrapper">
+          <button type="button" class="user-profile-btn" id="userProfileBtn" aria-label="Menu Pengguna">
+            <span class="user-avatar-badge" id="userAvatarBadge">
+              <i class="ri-shield-user-fill" id="userAvatarIcon"></i>
+            </span>
+            <div class="user-info-text">
+              <span class="user-display-name" id="userDisplayName">Admin</span>
+              <span class="user-role-tag role-admin" id="userRoleTag">Admin</span>
+            </div>
+            <i class="ri-arrow-down-s-line user-caret"></i>
+          </button>
+
+          <div class="user-dropdown-menu" id="userDropdownMenu">
+            <div class="user-dropdown-header">
+              <div class="dropdown-user-avatar" id="dropdownAvatarWrapper">
+                <i class="ri-shield-user-fill" id="dropdownAvatarIcon"></i>
+              </div>
+              <div class="dropdown-user-details">
+                <div class="dropdown-user-name" id="dropdownUserName">Agung (Pemilik)</div>
+                <div class="dropdown-user-role" id="dropdownUserRole">Administrator</div>
+              </div>
+            </div>
+            <div class="dropdown-divider"></div>
+            <button type="button" class="dropdown-item" id="btnMenuChangePassword">
+              <i class="ri-key-2-line"></i>
+              <span>Ganti Kata Sandi</span>
+            </button>
+            <button type="button" class="dropdown-item" id="btnMenuManageUsers">
+              <i class="ri-group-line"></i>
+              <span>Kelola Pengguna (Admin)</span>
+            </button>
+            <div class="dropdown-divider"></div>
+            <button type="button" class="dropdown-item dropdown-item-danger" id="btnMenuLogout">
+              <i class="ri-logout-box-r-line"></i>
+              <span>Keluar (Logout)</span>
+            </button>
+          </div>
+        </div>
+
         <div class="topbar-date" id="topbarDate"></div>
       </div>
     </header>
@@ -839,6 +989,110 @@
         <div class="modal-actions" style="margin-top:1.25rem;">
           <button type="button" class="btn btn-primary" id="btnDoneDbModal">Selesai</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Ganti Kata Sandi -->
+  <div class="modal-overlay" id="modalChangePassword" role="dialog" aria-modal="true">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:.5rem;">
+          <i class="ri-key-2-line text-primary"></i> Ganti Kata Sandi
+        </h3>
+        <button class="modal-close" id="btnCloseChangePwd">&times;</button>
+      </div>
+      <form id="formChangePassword">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="pwdOld">Kata Sandi Saat Ini</label>
+            <input type="password" id="pwdOld" class="form-control" required placeholder="Masukkan kata sandi lama" autocomplete="current-password" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pwdNew">Kata Sandi Baru</label>
+            <input type="password" id="pwdNew" class="form-control" required minlength="4" placeholder="Minimal 4 karakter" autocomplete="new-password" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pwdConfirm">Konfirmasi Kata Sandi Baru</label>
+            <input type="password" id="pwdConfirm" class="form-control" required minlength="4" placeholder="Ketik ulang kata sandi baru" autocomplete="new-password" />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="btnCancelChangePwd">Batal</button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitChangePwd">
+            <i class="ri-save-line"></i> Simpan Kata Sandi
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Kelola Pengguna (Admin Only) -->
+  <div class="modal-overlay" id="modalManageUsers" role="dialog" aria-modal="true">
+    <div class="modal-box" style="max-width: 650px;">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:.5rem;">
+          <i class="ri-group-line text-primary"></i> Kelola Pengguna &amp; Kasir
+        </h3>
+        <button class="modal-close" id="btnCloseManageUsers">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Form Tambah Pengguna Baru -->
+        <div class="user-create-card">
+          <h4 style="font-size:.9rem; font-weight:700; margin-bottom:.75rem; display:flex; align-items:center; gap:.4rem;">
+            <i class="ri-user-add-line text-primary"></i> Tambah Akun Pengguna / Kasir Baru
+          </h4>
+          <form id="formAddUser" class="form-row-grid">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Nama Lengkap</label>
+              <input type="text" id="newUserName" class="form-control" placeholder="Cth: Budi Kasir" required />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Username</label>
+              <input type="text" id="newUserUsername" class="form-control" placeholder="Cth: budi" required />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Peran (Role)</label>
+              <select id="newUserRole" class="form-control">
+                <option value="kasir">Kasir / Karyawan (Operasional)</option>
+                <option value="admin">Administrator / Pemilik (Akses Penuh)</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Kata Sandi</label>
+              <input type="password" id="newUserPassword" class="form-control" placeholder="Minimal 4 karakter" required minlength="4" />
+            </div>
+            <div style="grid-column: 1 / -1; display:flex; justify-content:flex-end; margin-top:.5rem;">
+              <button type="submit" class="btn btn-primary btn-sm">
+                <i class="ri-user-add-line"></i> Simpan Pengguna
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <h4 style="font-size:.9rem; font-weight:700; margin:1.25rem 0 .5rem; display:flex; align-items:center; justify-content:space-between;">
+          <span><i class="ri-shield-user-line text-primary"></i> Daftar Pengguna Terdaftar</span>
+          <span class="badge badge-opname" id="userCountBadge">0 Akun</span>
+        </h4>
+
+        <div class="table-container" style="max-height: 250px; overflow-y:auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Pengguna</th>
+                <th>Username</th>
+                <th>Peran</th>
+                <th style="text-align:center;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="bodyUsersTable">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="btnDoneManageUsers">Tutup</button>
       </div>
     </div>
   </div>

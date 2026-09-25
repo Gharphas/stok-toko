@@ -1215,6 +1215,10 @@ function openEditProduk(id) {
 }
 
 function hapusProduk(id) {
+  if (typeof Auth !== 'undefined' && !Auth.isAdmin()) {
+    showToast('Akses dibatasi: Hanya Administrator / Pemilik yang dapat menghapus produk.', 'warning');
+    return;
+  }
   const p = DB.getProducts().find(x => x.id === id);
   if (!p) return;
   showConfirm('Hapus Barang', `Hapus "${p.nama}" dari katalog? Data stok akan terhapus dari database.`, async () => {
@@ -1616,12 +1620,13 @@ function renderRiwayat() {
     const jenisLabel = t.jenis === 'masuk' ? 'Barang Masuk' : t.jenis === 'keluar' ? 'Barang Keluar' : 'Stock Opname';
     const sign = t.jenis === 'masuk' ? '+' : t.jenis === 'keluar' ? '-' : '±';
     const bCls = `badge-${t.jenis === 'masuk' ? 'masuk' : t.jenis === 'keluar' ? 'keluar' : 'opname'}`;
+    const operatorBadge = t.operator ? `<span class="badge" style="background:var(--surface2); border:1px solid var(--border); font-size:.68rem; margin-left:.35rem;" title="Dicatat oleh ${t.operator}"><i class="ri-user-3-line"></i> ${t.operator}</span>` : '';
     return `<tr>
       <td style="white-space:nowrap;">${formatDate(t.tgl)}</td>
       <td><span class="badge ${bCls}">${jenisLabel}</span></td>
       <td class="fw-bold">${t.namaProduk || '-'}</td>
       <td>${sign}${t.jumlah} ${t.satuan || ''}</td>
-      <td>${t.keterangan || t.supplier || '-'}</td>
+      <td>${t.keterangan || t.supplier || '-'}${operatorBadge}</td>
       <td>${t.total ? formatRupiah(t.total) : '-'}</td>
     </tr>`;
   }).join('');
@@ -2542,6 +2547,460 @@ window.addEventListener('focus', () => {
 });
 
 // ============================================================
+//  AUTHENTICATION & ROLE-BASED ACCESS CONTROL (RBAC)
+// ============================================================
+const Auth = {
+  USER_STORAGE: 'sm_auth_user',
+  DEFAULT_USERS: [
+    { id: 'usr_admin', username: 'admin', password: 'admin123', name: 'Agung (Pemilik)', role: 'admin' },
+    { id: 'usr_kasir', username: 'kasir', password: 'kasir123', name: 'Kasir Toko', role: 'kasir' }
+  ],
+  currentUser: null,
+
+  init() {
+    try {
+      const stored = localStorage.getItem(this.USER_STORAGE) || sessionStorage.getItem(this.USER_STORAGE);
+      if (stored) {
+        this.currentUser = JSON.parse(stored);
+      }
+    } catch {
+      this.currentUser = null;
+    }
+
+    if (!this.currentUser) {
+      this.showLoginScreen();
+    } else {
+      this.hideLoginScreen();
+      this.updateUserUI();
+      this.applyRoleRestrictions();
+    }
+
+    this.bindEvents();
+  },
+
+  isLoggedIn() {
+    return !!this.currentUser;
+  },
+
+  isAdmin() {
+    return this.currentUser && this.currentUser.role === 'admin';
+  },
+
+  getCurrentUser() {
+    return this.currentUser;
+  },
+
+  async login(username, password, remember = true) {
+    const cleanUser = String(username || '').trim().toLowerCase();
+    const cleanPass = String(password || '').trim();
+
+    if (!cleanUser || !cleanPass) {
+      return { success: false, message: 'Harap masukkan username dan kata sandi.' };
+    }
+
+    // 1. Coba verifikasi dengan server backend
+    try {
+      const res = await fetch(DB.getApiUrl('/api/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanUser, password: cleanPass })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success && json.user) {
+        this.setSession(json.user, remember);
+        return { success: true, user: json.user };
+      } else if (res.status === 401) {
+        return { success: false, message: json.message || 'Username atau kata sandi tidak cocok!' };
+      }
+    } catch (err) {
+      console.warn('Backend login request gagal, mencoba verifikasi offline:', err);
+    }
+
+    // 2. Fallback offline
+    const matched = this.DEFAULT_USERS.find(u => u.username.toLowerCase() === cleanUser);
+    if (matched && matched.password === cleanPass) {
+      const safe = { id: matched.id, username: matched.username, name: matched.name, role: matched.role };
+      this.setSession(safe, remember);
+      return { success: true, user: safe };
+    }
+
+    return { success: false, message: 'Username atau kata sandi salah. Silakan coba lagi.' };
+  },
+
+  setSession(user, remember = true) {
+    this.currentUser = user;
+    if (remember) {
+      localStorage.setItem(this.USER_STORAGE, JSON.stringify(user));
+      sessionStorage.removeItem(this.USER_STORAGE);
+    } else {
+      sessionStorage.setItem(this.USER_STORAGE, JSON.stringify(user));
+      localStorage.removeItem(this.USER_STORAGE);
+    }
+    this.hideLoginScreen();
+    this.updateUserUI();
+    this.applyRoleRestrictions();
+  },
+
+  logout() {
+    this.currentUser = null;
+    localStorage.removeItem(this.USER_STORAGE);
+    sessionStorage.removeItem(this.USER_STORAGE);
+    document.getElementById('userMenuWrapper')?.classList.remove('open');
+    this.showLoginScreen();
+    showToast('Anda berhasil keluar dari sistem.', 'info');
+  },
+
+  showLoginScreen() {
+    const screen = document.getElementById('loginScreen');
+    if (screen) {
+      screen.classList.remove('hidden');
+      const alertBox = document.getElementById('loginAlert');
+      if (alertBox) alertBox.style.display = 'none';
+      const pwdInput = document.getElementById('loginPassword');
+      if (pwdInput) pwdInput.value = '';
+    }
+  },
+
+  hideLoginScreen() {
+    const screen = document.getElementById('loginScreen');
+    if (screen) {
+      screen.classList.add('hidden');
+    }
+  },
+
+  updateUserUI() {
+    if (!this.currentUser) return;
+    const user = this.currentUser;
+    const isAdmin = user.role === 'admin';
+
+    // Topbar User Menu
+    const displayName = document.getElementById('userDisplayName');
+    const roleTag = document.getElementById('userRoleTag');
+    const avatarBadge = document.getElementById('userAvatarBadge');
+    const dropdownName = document.getElementById('dropdownUserName');
+    const dropdownRole = document.getElementById('dropdownUserRole');
+    const dropdownAvatar = document.getElementById('dropdownAvatarWrapper');
+    const btnManageUsers = document.getElementById('btnMenuManageUsers');
+
+    if (displayName) displayName.textContent = user.name || user.username;
+    if (roleTag) {
+      roleTag.textContent = isAdmin ? 'Admin' : 'Kasir';
+      roleTag.className = `user-role-tag ${isAdmin ? 'role-admin' : 'role-kasir'}`;
+    }
+    if (avatarBadge) {
+      avatarBadge.innerHTML = `<i class="${isAdmin ? 'ri-shield-user-fill' : 'ri-shopping-cart-2-fill'}"></i>`;
+    }
+    if (dropdownName) dropdownName.textContent = user.name || user.username;
+    if (dropdownRole) dropdownRole.textContent = isAdmin ? 'Administrator / Pemilik' : 'Kasir / Karyawan';
+    if (dropdownAvatar) {
+      dropdownAvatar.innerHTML = `<i class="${isAdmin ? 'ri-shield-user-fill' : 'ri-shopping-cart-2-fill'}"></i>`;
+    }
+    if (btnManageUsers) {
+      btnManageUsers.style.display = isAdmin ? 'flex' : 'none';
+    }
+
+    // Sidebar User Profile Card
+    const sideName = document.getElementById('sidebarUserName');
+    const sideRole = document.getElementById('sidebarUserRole');
+    const sideAvatarWrap = document.getElementById('sidebarAvatarWrap');
+    if (sideName) sideName.textContent = user.name || user.username;
+    if (sideRole) sideRole.textContent = isAdmin ? 'Pemilik (Admin)' : 'Kasir Toko';
+    if (sideAvatarWrap) {
+      sideAvatarWrap.innerHTML = `<i class="${isAdmin ? 'ri-shield-user-fill' : 'ri-shopping-cart-2-fill'}"></i>`;
+    }
+  },
+
+  applyRoleRestrictions() {
+    const isAdmin = this.isAdmin();
+
+    // Sembunyikan atau tampilkan tombol database di sidebar
+    const btnDb = document.getElementById('btnOpenDbBackup');
+    if (btnDb) {
+      btnDb.style.display = isAdmin ? 'flex' : 'none';
+    }
+
+    // Sembunyikan aksi berisiko jika bukan admin
+    const btnResetAll = document.getElementById('btnResetAllData');
+    if (btnResetAll) {
+      btnResetAll.style.display = isAdmin ? 'inline-flex' : 'none';
+    }
+    const btnClearRiwayat = document.getElementById('btnClearRiwayat');
+    if (btnClearRiwayat) {
+      btnClearRiwayat.style.display = isAdmin ? 'inline-flex' : 'none';
+    }
+  },
+
+  bindEvents() {
+    // 1. Submit Form Login
+    const formLogin = document.getElementById('loginForm');
+    if (formLogin) {
+      formLogin.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('loginUsername').value;
+        const password = document.getElementById('loginPassword').value;
+        const remember = document.getElementById('loginRemember').checked;
+        const submitBtn = document.getElementById('btnLoginSubmit');
+        const alertBox = document.getElementById('loginAlert');
+        const alertText = document.getElementById('loginAlertText');
+
+        submitBtn.disabled = true;
+        submitBtn.querySelector('.btn-text').style.display = 'none';
+        submitBtn.querySelector('.btn-spinner').style.display = 'inline-flex';
+        alertBox.style.display = 'none';
+
+        try {
+          const res = await this.login(username, password, remember);
+          if (res.success) {
+            showToast(`Selamat datang, ${res.user.name}!`, 'success');
+          } else {
+            alertText.textContent = res.message || 'Username atau kata sandi tidak cocok.';
+            alertBox.style.display = 'flex';
+          }
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.querySelector('.btn-text').style.display = 'inline-flex';
+          submitBtn.querySelector('.btn-spinner').style.display = 'none';
+        }
+      });
+    }
+
+    // 2. Toggle Show/Hide Password
+    const btnTogglePwd = document.getElementById('btnToggleLoginPwd');
+    if (btnTogglePwd) {
+      btnTogglePwd.addEventListener('click', () => {
+        const input = document.getElementById('loginPassword');
+        const icon = document.getElementById('iconToggleLoginPwd');
+        if (input.type === 'password') {
+          input.type = 'text';
+          icon.className = 'ri-eye-off-line';
+        } else {
+          input.type = 'password';
+          icon.className = 'ri-eye-line';
+        }
+      });
+    }
+
+    // 3. Quick Login Buttons
+    const btnQuickAdmin = document.getElementById('btnQuickLoginAdmin');
+    if (btnQuickAdmin) {
+      btnQuickAdmin.addEventListener('click', () => {
+        document.getElementById('loginUsername').value = 'admin';
+        document.getElementById('loginPassword').value = 'admin123';
+        document.getElementById('loginForm').dispatchEvent(new Event('submit'));
+      });
+    }
+
+    const btnQuickKasir = document.getElementById('btnQuickLoginKasir');
+    if (btnQuickKasir) {
+      btnQuickKasir.addEventListener('click', () => {
+        document.getElementById('loginUsername').value = 'kasir';
+        document.getElementById('loginPassword').value = 'kasir123';
+        document.getElementById('loginForm').dispatchEvent(new Event('submit'));
+      });
+    }
+
+    // 4. User Profile Dropdown Toggle
+    const userMenuWrapper = document.getElementById('userMenuWrapper');
+    const userProfileBtn = document.getElementById('userProfileBtn');
+    if (userProfileBtn && userMenuWrapper) {
+      userProfileBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        userMenuWrapper.classList.toggle('open');
+      });
+    }
+
+    // Close Dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (userMenuWrapper && !userMenuWrapper.contains(e.target)) {
+        userMenuWrapper.classList.remove('open');
+      }
+    });
+
+    // 5. Logout Buttons
+    const btnLogout = document.getElementById('btnMenuLogout');
+    if (btnLogout) {
+      btnLogout.addEventListener('click', () => {
+        showConfirm('Konfirmasi Keluar', 'Apakah Anda yakin ingin keluar dari akun ini?', () => {
+          this.logout();
+        });
+      });
+    }
+
+    const btnSidebarLogout = document.getElementById('sidebarLogoutBtn');
+    if (btnSidebarLogout) {
+      btnSidebarLogout.addEventListener('click', () => {
+        showConfirm('Konfirmasi Keluar', 'Apakah Anda yakin ingin keluar dari akun ini?', () => {
+          this.logout();
+        });
+      });
+    }
+
+    // 6. Modal Ganti Password
+    const modalChangePwd = document.getElementById('modalChangePassword');
+    const btnOpenChangePwd = document.getElementById('btnMenuChangePassword');
+    const btnCloseChangePwd = document.getElementById('btnCloseChangePwd');
+    const btnCancelChangePwd = document.getElementById('btnCancelChangePwd');
+    const formChangePwd = document.getElementById('formChangePassword');
+
+    if (btnOpenChangePwd && modalChangePwd) {
+      btnOpenChangePwd.addEventListener('click', () => {
+        userMenuWrapper.classList.remove('open');
+        formChangePwd?.reset();
+        modalChangePwd.classList.add('open');
+      });
+    }
+
+    const closeChangePwd = () => modalChangePwd?.classList.remove('open');
+    if (btnCloseChangePwd) btnCloseChangePwd.addEventListener('click', closeChangePwd);
+    if (btnCancelChangePwd) btnCancelChangePwd.addEventListener('click', closeChangePwd);
+
+    if (formChangePwd) {
+      formChangePwd.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const oldPwd = document.getElementById('pwdOld').value;
+        const newPwd = document.getElementById('pwdNew').value;
+        const confirmPwd = document.getElementById('pwdConfirm').value;
+
+        if (newPwd !== confirmPwd) {
+          showToast('Konfirmasi kata sandi baru tidak sama!', 'error');
+          return;
+        }
+
+        try {
+          const res = await fetch(DB.getApiUrl('/api/change-password'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: Auth.getCurrentUser()?.username,
+              oldPassword: oldPwd,
+              newPassword: newPwd
+            })
+          });
+          const json = await res.json();
+          if (res.ok && json.success) {
+            showToast('Kata sandi berhasil diperbarui!', 'success');
+            closeChangePwd();
+          } else {
+            showToast(json.message || 'Gagal mengubah kata sandi', 'error');
+          }
+        } catch (err) {
+          showToast('Gagal menghubungi server untuk mengubah password', 'error');
+        }
+      });
+    }
+
+    // 7. Modal Kelola Pengguna (Admin)
+    const modalManageUsers = document.getElementById('modalManageUsers');
+    const btnOpenManageUsers = document.getElementById('btnMenuManageUsers');
+    const btnCloseManageUsers = document.getElementById('btnCloseManageUsers');
+    const btnDoneManageUsers = document.getElementById('btnDoneManageUsers');
+    const formAddUser = document.getElementById('formAddUser');
+
+    if (btnOpenManageUsers && modalManageUsers) {
+      btnOpenManageUsers.addEventListener('click', () => {
+        userMenuWrapper.classList.remove('open');
+        modalManageUsers.classList.add('open');
+        this.loadUsersTable();
+      });
+    }
+
+    const closeManageUsers = () => modalManageUsers?.classList.remove('open');
+    if (btnCloseManageUsers) btnCloseManageUsers.addEventListener('click', closeManageUsers);
+    if (btnDoneManageUsers) btnDoneManageUsers.addEventListener('click', closeManageUsers);
+
+    if (formAddUser) {
+      formAddUser.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('newUserName').value.trim();
+        const username = document.getElementById('newUserUsername').value.trim().toLowerCase();
+        const role = document.getElementById('newUserRole').value;
+        const password = document.getElementById('newUserPassword').value.trim();
+
+        try {
+          const res = await fetch(DB.getApiUrl('/api/users'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, username, role, password })
+          });
+          const json = await res.json();
+          if (res.ok && json.success) {
+            showToast(`Pengguna "${name}" berhasil ditambahkan!`, 'success');
+            formAddUser.reset();
+            this.loadUsersTable();
+          } else {
+            showToast(json.message || 'Gagal menambahkan pengguna', 'error');
+          }
+        } catch (err) {
+          showToast('Gagal menghubungi server', 'error');
+        }
+      });
+    }
+  },
+
+  async loadUsersTable() {
+    const tbody = document.getElementById('bodyUsersTable');
+    const badge = document.getElementById('userCountBadge');
+    if (!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:1rem;"><i class="ri-loader-4-line ri-spin"></i> Memuat daftar akun...</td></tr>`;
+
+    try {
+      const res = await fetch(DB.getApiUrl('/api/users'));
+      if (res.ok) {
+        const json = await res.json();
+        const users = json.users || [];
+        if (badge) badge.textContent = `${users.length} Akun`;
+
+        if (!users.length) {
+          tbody.innerHTML = `<tr><td colspan="4" class="empty-row">Belum ada akun terdaftar</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = users.map(u => {
+          const isCurrent = this.currentUser && this.currentUser.username.toLowerCase() === u.username.toLowerCase();
+          const isAdminRole = u.role === 'admin';
+          const roleBadge = isAdminRole
+            ? '<span class="badge badge-masuk"><i class="ri-shield-user-fill"></i> Admin</span>'
+            : '<span class="badge badge-opname"><i class="ri-shopping-cart-2-fill"></i> Kasir</span>';
+
+          const actionHtml = isCurrent
+            ? '<span style="font-size:.75rem; color:var(--text-3); font-weight:600;">(Akun Anda)</span>'
+            : u.username.toLowerCase() === 'admin'
+              ? '<span style="font-size:.75rem; color:var(--text-3);">Admin Utama</span>'
+              : `<button type="button" class="btn btn-icon danger" onclick="Auth.deleteUserAccount('${u.id}', '${u.name}')" title="Hapus Akun"><i class="ri-delete-bin-line"></i></button>`;
+
+          return `<tr>
+            <td class="fw-bold">${u.name}</td>
+            <td><code>${u.username}</code></td>
+            <td>${roleBadge}</td>
+            <td style="text-align:center;">${actionHtml}</td>
+          </tr>`;
+        }).join('');
+      }
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--red);">Gagal memuat pengguna dari server</td></tr>`;
+    }
+  },
+
+  deleteUserAccount(userId, userName) {
+    showConfirm('Hapus Pengguna', `Apakah Anda yakin ingin menghapus akun "${userName}"? Akun ini tidak akan dapat login lagi.`, async () => {
+      try {
+        const res = await fetch(DB.getApiUrl(`/api/users/${userId}`), { method: 'DELETE' });
+        const json = await res.json();
+        if (res.ok && json.success) {
+          showToast(`Akun "${userName}" berhasil dihapus.`, 'warning');
+          this.loadUsersTable();
+        } else {
+          showToast(json.message || 'Gagal menghapus pengguna', 'error');
+        }
+      } catch (err) {
+        showToast('Gagal menghubungi server', 'error');
+      }
+    });
+  }
+};
+
+// ============================================================
 //  INIT APP
 // ============================================================
 window.openEditProduk = openEditProduk;
@@ -2552,9 +3011,12 @@ window.triggerDataRefresh = triggerDataRefresh;
 window.openScannerModal   = openScannerModal;
 window.closeScannerModal  = closeScannerModal;
 window.filterKatalogByGroup = filterKatalogByGroup;
+window.Auth           = Auth;
 
 async function initApp() {
   await DB.init();
+  Auth.init();
   switchTab('dashboard');
 }
 initApp();
+

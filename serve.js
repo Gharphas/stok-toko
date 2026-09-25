@@ -13,12 +13,33 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+// Pengguna default aplikasi
+const DEFAULT_USERS = [
+  {
+    id: 'usr_admin',
+    username: 'admin',
+    password: 'admin123',
+    name: 'Agung (Pemilik)',
+    role: 'admin',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'usr_kasir',
+    username: 'kasir',
+    password: 'kasir123',
+    name: 'Kasir Toko',
+    role: 'kasir',
+    createdAt: new Date().toISOString()
+  }
+];
+
 // Inisialisasi struktur database jika belum ada
 function getInitialDb() {
   return {
     products: [],
     transactions: [],
     opnames: [],
+    users: JSON.parse(JSON.stringify(DEFAULT_USERS)),
     lastUpdated: new Date().toISOString()
   };
 }
@@ -31,6 +52,10 @@ function loadDatabase() {
       if (!Array.isArray(data.products)) data.products = [];
       if (!Array.isArray(data.transactions)) data.transactions = [];
       if (!Array.isArray(data.opnames)) data.opnames = [];
+      if (!Array.isArray(data.users) || data.users.length === 0) {
+        data.users = JSON.parse(JSON.stringify(DEFAULT_USERS));
+        saveDatabase(data);
+      }
       return data;
     }
   } catch (err) {
@@ -168,6 +193,7 @@ const server = http.createServer(async (req, res) => {
           total: qty * (Number(hargaBeli) || prod.hargaBeli),
           supplier: supplier || '',
           nota: nota || '',
+          operator: payload.operator || 'Admin',
           keterangan: keterangan || '',
           tgl: new Date().toISOString()
         };
@@ -222,6 +248,7 @@ const server = http.createServer(async (req, res) => {
           jumlah: qty,
           hargaSatuan: prod.hargaJual,
           total: qty * prod.hargaJual,
+          operator: payload.operator || 'Kasir',
           keterangan: `[${(jenisKeluar || 'penjualan').toUpperCase()}] ${keterangan || ''}`.trim(),
           tgl: new Date().toISOString()
         };
@@ -306,6 +333,7 @@ const server = http.createServer(async (req, res) => {
                 namaProduk: c.nama,
                 satuan: c.satuan,
                 jumlah: Math.abs(c.selisih),
+                operator: payload.operator || 'Admin',
                 keterangan: `Opname: sistem ${c.stokSistem} → fisik ${c.stokFisik} (${c.selisih >= 0 ? '+' : ''}${c.selisih}) ${c.keterangan || ''}`.trim(),
                 tgl: new Date().toISOString()
               });
@@ -351,6 +379,170 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 200, { success: true, message: 'Database berhasil dipulihkan', data: database });
         }
         return sendJson(res, 400, { success: false, message: 'Format data backup tidak valid' });
+      } catch (err) {
+        return sendJson(res, 500, { success: false, message: err.message });
+      }
+    }
+
+    // 9. POST /api/login -> Verifikasi login pengguna
+    if (url === '/api/login' && req.method === 'POST') {
+      try {
+        const { username, password } = await parseJsonBody(req);
+        database = loadDatabase();
+        if (!Array.isArray(database.users) || database.users.length === 0) {
+          database.users = JSON.parse(JSON.stringify(DEFAULT_USERS));
+          saveDatabase(database);
+        }
+
+        const cleanUser = String(username || '').trim().toLowerCase();
+        const user = database.users.find(u => u.username.toLowerCase() === cleanUser);
+
+        if (!user || String(user.password) !== String(password || '')) {
+          return sendJson(res, 401, {
+            success: false,
+            message: 'Username atau kata sandi tidak cocok. Silakan coba lagi.'
+          });
+        }
+
+        const safeUser = {
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          role: user.role,
+          createdAt: user.createdAt
+        };
+
+        const token = 'tok_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+        return sendJson(res, 200, {
+          success: true,
+          message: `Selamat datang, ${user.name}!`,
+          user: safeUser,
+          token
+        });
+      } catch (err) {
+        return sendJson(res, 500, { success: false, message: err.message });
+      }
+    }
+
+    // 10. GET /api/users -> Ambil daftar pengguna (untuk admin / opsi)
+    if (url === '/api/users' && req.method === 'GET') {
+      database = loadDatabase();
+      const safeUsers = (database.users || []).map(u => ({
+        id: u.id,
+        username: u.username,
+        name: u.name,
+        role: u.role,
+        createdAt: u.createdAt
+      }));
+      return sendJson(res, 200, { success: true, users: safeUsers });
+    }
+
+    // 11. POST /api/users -> Tambah atau perbarui pengguna baru (Admin)
+    if (url === '/api/users' && req.method === 'POST') {
+      try {
+        const { id, username, name, password, role } = await parseJsonBody(req);
+        database = loadDatabase();
+        if (!Array.isArray(database.users)) database.users = [];
+
+        const cleanUser = String(username || '').trim().toLowerCase();
+        if (!cleanUser) {
+          return sendJson(res, 400, { success: false, message: 'Username tidak boleh kosong' });
+        }
+
+        if (id) {
+          // Edit pengguna
+          const idx = database.users.findIndex(u => u.id === id);
+          if (idx === -1) {
+            return sendJson(res, 404, { success: false, message: 'Pengguna tidak ditemukan' });
+          }
+          database.users[idx].name = name || database.users[idx].name;
+          database.users[idx].role = role || database.users[idx].role;
+          if (password && password.trim()) {
+            database.users[idx].password = String(password).trim();
+          }
+          database.users[idx].updatedAt = new Date().toISOString();
+        } else {
+          // Tambah pengguna baru
+          if (database.users.some(u => u.username.toLowerCase() === cleanUser)) {
+            return sendJson(res, 400, { success: false, message: `Username "${cleanUser}" sudah terdaftar` });
+          }
+          if (!password || String(password).length < 4) {
+            return sendJson(res, 400, { success: false, message: 'Password minimal 4 karakter' });
+          }
+          database.users.push({
+            id: 'usr_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            username: cleanUser,
+            name: name || cleanUser,
+            password: String(password).trim(),
+            role: role === 'admin' ? 'admin' : 'kasir',
+            createdAt: new Date().toISOString()
+          });
+        }
+
+        saveDatabase(database);
+        const safeUsers = database.users.map(u => ({
+          id: u.id,
+          username: u.username,
+          name: u.name,
+          role: u.role,
+          createdAt: u.createdAt
+        }));
+        return sendJson(res, 200, { success: true, message: 'Data pengguna berhasil disimpan', users: safeUsers });
+      } catch (err) {
+        return sendJson(res, 500, { success: false, message: err.message });
+      }
+    }
+
+    // 12. DELETE /api/users/:id -> Hapus pengguna (Admin)
+    if (url.startsWith('/api/users/') && req.method === 'DELETE') {
+      const targetId = url.replace('/api/users/', '');
+      database = loadDatabase();
+      if (!Array.isArray(database.users)) database.users = [];
+
+      const target = database.users.find(u => u.id === targetId);
+      if (!target) {
+        return sendJson(res, 404, { success: false, message: 'Pengguna tidak ditemukan' });
+      }
+      if (target.username.toLowerCase() === 'admin') {
+        return sendJson(res, 400, { success: false, message: 'Akun admin utama tidak boleh dihapus' });
+      }
+
+      database.users = database.users.filter(u => u.id !== targetId);
+      saveDatabase(database);
+      const safeUsers = database.users.map(u => ({
+        id: u.id,
+        username: u.username,
+        name: u.name,
+        role: u.role,
+        createdAt: u.createdAt
+      }));
+      return sendJson(res, 200, { success: true, message: 'Pengguna berhasil dihapus', users: safeUsers });
+    }
+
+    // 13. POST /api/change-password -> Ubah kata sandi pengguna yang sedang login
+    if (url === '/api/change-password' && req.method === 'POST') {
+      try {
+        const { username, oldPassword, newPassword } = await parseJsonBody(req);
+        database = loadDatabase();
+        const cleanUser = String(username || '').trim().toLowerCase();
+        const user = (database.users || []).find(u => u.username.toLowerCase() === cleanUser);
+
+        if (!user) {
+          return sendJson(res, 404, { success: false, message: 'Pengguna tidak ditemukan' });
+        }
+        if (String(user.password) !== String(oldPassword || '')) {
+          return sendJson(res, 400, { success: false, message: 'Kata sandi lama tidak cocok' });
+        }
+        if (!newPassword || String(newPassword).length < 4) {
+          return sendJson(res, 400, { success: false, message: 'Kata sandi baru minimal 4 karakter' });
+        }
+
+        user.password = String(newPassword).trim();
+        user.updatedAt = new Date().toISOString();
+        saveDatabase(database);
+
+        return sendJson(res, 200, { success: true, message: 'Kata sandi berhasil diperbarui!' });
       } catch (err) {
         return sendJson(res, 500, { success: false, message: err.message });
       }
