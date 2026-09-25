@@ -3442,5 +3442,66 @@ body.dark .badge-kritis {
   transform: translateY(-1px);
 }
 
+/* =========================================================
+   AUTOSAVE REAL-TIME BADGE & DRAFT INDICATOR
+   ========================================================= */
+.autosave-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #059669;
+  font-size: .73rem;
+  font-weight: 700;
+  padding: .28rem .7rem;
+  border-radius: 20px;
+  letter-spacing: .2px;
+  transition: all .25s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+
+body.dark .autosave-pill {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #34d399;
+}
+
+.autosave-pill i {
+  font-size: .85rem;
+  color: #10b981;
+}
+
+.autosave-pill.saving {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #d97706;
+}
+
+body.dark .autosave-pill.saving {
+  background: rgba(245, 158, 11, 0.25);
+  color: #fbbf24;
+}
+
+.autosave-pill.saved-flash {
+  animation: flashSavedPill 1.2s ease;
+}
+
+@keyframes flashSavedPill {
+  0% { transform: scale(1.08); box-shadow: 0 0 10px rgba(16, 185, 129, 0.6); }
+  50% { transform: scale(1.04); }
+  100% { transform: scale(1); box-shadow: none; }
+}
+
+@media (max-width: 680px) {
+  .autosave-pill span {
+    display: none;
+  }
+  .autosave-pill {
+    padding: .25rem .5rem;
+  }
+}
+
 
 

@@ -173,6 +173,9 @@ const DB = {
       localStorage.setItem(this.LAST_UPDATED, this._cache.lastUpdated);
     }
     this.updateLastUpdatedDisplay();
+    if (typeof flashAutoSaveIndicator === 'function') {
+      flashAutoSaveIndicator();
+    }
   },
 
   updateLastUpdatedDisplay() {
@@ -606,6 +609,248 @@ const DB = {
 };
 
 // ============================================================
+//  AUTO-SAVE & REALTIME DRAFT PERSISTENCE
+// ============================================================
+function flashAutoSaveIndicator(text = null) {
+  const pill = document.getElementById('autosavePill');
+  const txt = document.getElementById('autosaveText');
+  if (!pill) return;
+
+  const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  pill.classList.remove('saved-flash');
+  void pill.offsetWidth;
+  pill.classList.add('saved-flash');
+
+  if (txt) {
+    txt.textContent = text || `Tersimpan Otomatis (${timeStr})`;
+  }
+
+  clearTimeout(pill._timer);
+  pill._timer = setTimeout(() => {
+    if (txt) txt.textContent = `Tersimpan Otomatis (${timeStr})`;
+  }, 2500);
+}
+
+const DraftManager = {
+  KEYS: {
+    PRODUK: 'sm_draft_produk',
+    MASUK:  'sm_draft_masuk',
+    KELUAR: 'sm_draft_keluar',
+    OPNAME: 'sm_draft_opname',
+  },
+
+  // Simpan draft form Tambah/Edit Produk
+  saveProdukDraft() {
+    if (document.getElementById('produkId')?.value) return;
+
+    const draft = {
+      kode: document.getElementById('produkKode')?.value || '',
+      nama: document.getElementById('produkNama')?.value || '',
+      kategori: document.getElementById('produkKategori')?.value || '',
+      satuan: document.getElementById('produkSatuan')?.value || 'pcs',
+      stok: document.getElementById('produkStokAwal')?.value || '',
+      minStok: document.getElementById('produkMinStok')?.value || '',
+      hargaBeli: document.getElementById('produkHargaBeli')?.value || '',
+      hargaJual: document.getElementById('produkHargaJual')?.value || '',
+      deskripsi: document.getElementById('produkDeskripsi')?.value || '',
+      time: Date.now()
+    };
+    try { localStorage.setItem(this.KEYS.PRODUK, JSON.stringify(draft)); } catch {}
+    flashAutoSaveIndicator('Menyimpan draft...');
+  },
+
+  restoreProdukDraft() {
+    try {
+      if (document.getElementById('produkId')?.value) return;
+      const raw = localStorage.getItem(this.KEYS.PRODUK);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (!d.nama && !d.kode && !d.hargaBeli && !d.hargaJual) return;
+
+      if (document.getElementById('produkKode') && d.kode) document.getElementById('produkKode').value = d.kode;
+      if (document.getElementById('produkNama') && d.nama) document.getElementById('produkNama').value = d.nama;
+      if (document.getElementById('produkKategori') && d.kategori) document.getElementById('produkKategori').value = d.kategori;
+      if (document.getElementById('produkSatuan') && d.satuan) document.getElementById('produkSatuan').value = d.satuan;
+      if (document.getElementById('produkStokAwal') && d.stok) document.getElementById('produkStokAwal').value = d.stok;
+      if (document.getElementById('produkMinStok') && d.minStok) document.getElementById('produkMinStok').value = d.minStok;
+      if (document.getElementById('produkHargaBeli') && d.hargaBeli) document.getElementById('produkHargaBeli').value = d.hargaBeli;
+      if (document.getElementById('produkHargaJual') && d.hargaJual) document.getElementById('produkHargaJual').value = d.hargaJual;
+      if (document.getElementById('produkDeskripsi') && d.deskripsi) document.getElementById('produkDeskripsi').value = d.deskripsi;
+      flashAutoSaveIndicator('Draft produk dipulihkan');
+    } catch {}
+  },
+
+  clearProdukDraft() {
+    try { localStorage.removeItem(this.KEYS.PRODUK); } catch {}
+  },
+
+  // Simpan draft Barang Masuk
+  saveMasukDraft() {
+    const draft = {
+      produkId: document.getElementById('masukProduk')?.value || '',
+      jumlah: document.getElementById('masukJumlah')?.value || '',
+      harga: document.getElementById('masukHarga')?.value || '',
+      supplier: document.getElementById('masukSupplier')?.value || '',
+      nota: document.getElementById('masukNota')?.value || '',
+      ket: document.getElementById('masukKet')?.value || '',
+      time: Date.now()
+    };
+    try { localStorage.setItem(this.KEYS.MASUK, JSON.stringify(draft)); } catch {}
+    flashAutoSaveIndicator('Draft masuk tersimpan...');
+  },
+
+  restoreMasukDraft() {
+    try {
+      const raw = localStorage.getItem(this.KEYS.MASUK);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (!d.produkId && !d.jumlah && !d.supplier) return;
+      if (document.getElementById('masukProduk') && d.produkId) {
+        document.getElementById('masukProduk').value = d.produkId;
+      }
+      if (document.getElementById('masukJumlah') && d.jumlah) document.getElementById('masukJumlah').value = d.jumlah;
+      if (document.getElementById('masukHarga') && d.harga) document.getElementById('masukHarga').value = d.harga;
+      if (document.getElementById('masukSupplier') && d.supplier) document.getElementById('masukSupplier').value = d.supplier;
+      if (document.getElementById('masukNota') && d.nota) document.getElementById('masukNota').value = d.nota;
+      if (document.getElementById('masukKet') && d.ket) document.getElementById('masukKet').value = d.ket;
+      if (typeof updateMasukPreview === 'function') updateMasukPreview();
+      flashAutoSaveIndicator('Draft masuk dipulihkan');
+    } catch {}
+  },
+
+  clearMasukDraft() {
+    try { localStorage.removeItem(this.KEYS.MASUK); } catch {}
+  },
+
+  // Simpan draft Barang Keluar
+  saveKeluarDraft() {
+    const draft = {
+      produkId: document.getElementById('keluarProduk')?.value || '',
+      jumlah: document.getElementById('keluarJumlah')?.value || '',
+      jenis: document.getElementById('keluarJenis')?.value || 'penjualan',
+      ket: document.getElementById('keluarKet')?.value || '',
+      time: Date.now()
+    };
+    try { localStorage.setItem(this.KEYS.KELUAR, JSON.stringify(draft)); } catch {}
+    flashAutoSaveIndicator('Draft keluar tersimpan...');
+  },
+
+  restoreKeluarDraft() {
+    try {
+      const raw = localStorage.getItem(this.KEYS.KELUAR);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (!d.produkId && !d.jumlah) return;
+      if (document.getElementById('keluarProduk') && d.produkId) {
+        document.getElementById('keluarProduk').value = d.produkId;
+        const info = document.getElementById('keluarStokInfo');
+        const p = DB.getProducts().find(x => x.id === d.produkId);
+        if (info && p) info.textContent = `Sisa Stok: ${p.stok} ${p.satuan}`;
+      }
+      if (document.getElementById('keluarJumlah') && d.jumlah) document.getElementById('keluarJumlah').value = d.jumlah;
+      if (document.getElementById('keluarJenis') && d.jenis) document.getElementById('keluarJenis').value = d.jenis;
+      if (document.getElementById('keluarKet') && d.ket) document.getElementById('keluarKet').value = d.ket;
+      flashAutoSaveIndicator('Draft keluar dipulihkan');
+    } catch {}
+  },
+
+  clearKeluarDraft() {
+    try { localStorage.removeItem(this.KEYS.KELUAR); } catch {}
+  },
+
+  // Simpan draft Opname Fisik
+  saveOpnameDraft() {
+    const draft = {};
+    document.querySelectorAll('.opname-input').forEach(inp => {
+      if (inp.value !== '') {
+        const id = inp.id.replace('opname-', '');
+        draft[id] = inp.value;
+      }
+    });
+    try { localStorage.setItem(this.KEYS.OPNAME, JSON.stringify(draft)); } catch {}
+    flashAutoSaveIndicator('Hitungan fisik tersimpan...');
+  },
+
+  restoreOpnameDraft() {
+    try {
+      const raw = localStorage.getItem(this.KEYS.OPNAME);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      Object.keys(draft).forEach(id => {
+        const inp = document.getElementById(`opname-${id}`);
+        if (inp && inp.value === '') {
+          inp.value = draft[id];
+          if (typeof updateDiff === 'function') updateDiff(id);
+        }
+      });
+    } catch {}
+  },
+
+  clearOpnameDraft() {
+    try { localStorage.removeItem(this.KEYS.OPNAME); } catch {}
+  },
+
+  initListeners() {
+    // 1. Auto-save input pada Form Tambah/Edit Produk
+    const formProduk = document.getElementById('formProduk');
+    if (formProduk) {
+      ['input', 'change'].forEach(evt => {
+        formProduk.addEventListener(evt, () => {
+          DraftManager.saveProdukDraft();
+        });
+      });
+    }
+
+    // 2. Auto-save input pada Form Barang Masuk
+    const formMasuk = document.getElementById('formMasuk');
+    if (formMasuk) {
+      ['input', 'change'].forEach(evt => {
+        formMasuk.addEventListener(evt, () => {
+          DraftManager.saveMasukDraft();
+        });
+      });
+    }
+
+    // 3. Auto-save input pada Form Barang Keluar
+    const formKeluar = document.getElementById('formKeluar');
+    if (formKeluar) {
+      ['input', 'change'].forEach(evt => {
+        formKeluar.addEventListener(evt, () => {
+          DraftManager.saveKeluarDraft();
+        });
+      });
+    }
+
+    // 4. POS Cart Note & Cash Input Auto-save
+    const posCash = document.getElementById('posCashInput');
+    if (posCash) {
+      posCash.addEventListener('input', () => {
+        try { localStorage.setItem('sm_draft_pos_cash', posCash.value); } catch {}
+        flashAutoSaveIndicator('Nominal tersimpan...');
+      });
+    }
+    const posNote = document.getElementById('posOrderNote');
+    if (posNote) {
+      posNote.addEventListener('input', () => {
+        try { localStorage.setItem('sm_draft_pos_note', posNote.value); } catch {}
+        flashAutoSaveIndicator('Catatan tersimpan...');
+      });
+    }
+
+    // 5. Global Persist on tab hide or window unload
+    window.addEventListener('beforeunload', () => {
+      DB._persistLocal();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        DB._persistLocal();
+      }
+    });
+  }
+};
+
+// ============================================================
 //  UTILITIES
 // ============================================================
 function genId() {
@@ -777,8 +1022,8 @@ function renderByTab(name) {
   if (name === 'dashboard') renderDashboard();
   if (name === 'produk')   renderTableProduk();
   if (name === 'pos')      renderPosTab();
-  if (name === 'masuk')    { populateProdukSelects(); renderListMasuk(); }
-  if (name === 'keluar')   { populateProdukSelects(); renderListKeluar(); }
+  if (name === 'masuk')    { populateProdukSelects(); renderListMasuk(); DraftManager.restoreMasukDraft(); }
+  if (name === 'keluar')   { populateProdukSelects(); renderListKeluar(); DraftManager.restoreKeluarDraft(); }
   if (name === 'opname')   renderOpname();
   if (name === 'riwayat')  renderRiwayat();
 }
@@ -1718,6 +1963,7 @@ document.getElementById('btnAddProduk').addEventListener('click', () => {
   document.getElementById('produkMinStok').value = '0';
   document.getElementById('modalProdukTitle').textContent = 'Tambah Barang Baru';
   document.getElementById('saveProdukBtn').textContent = 'Simpan Barang';
+  DraftManager.restoreProdukDraft();
   document.getElementById('modalProduk').classList.add('open');
 });
 document.getElementById('closeProdukModal').addEventListener('click', () => document.getElementById('modalProduk').classList.remove('open'));
@@ -1785,6 +2031,7 @@ document.getElementById('formProduk').addEventListener('submit', async (e) => {
   };
 
   await DB.saveProduct(data);
+  DraftManager.clearProdukDraft();
   document.getElementById('modalProduk').classList.remove('open');
   renderTableProduk();
   showToast(id ? 'Barang berhasil diperbarui di database!' : 'Barang baru berhasil disimpan ke database!', 'success');
@@ -1911,6 +2158,7 @@ document.getElementById('formMasuk').addEventListener('submit', async (e) => {
 
   try {
     const res = await DB.catatMasuk({ produkId, jumlah, hargaBeli, supplier, nota, keterangan: ket });
+    DraftManager.clearMasukDraft();
     document.getElementById('formMasuk').reset();
     document.getElementById('masukPreview').style.display = 'none';
     populateProdukSelects();
@@ -1982,6 +2230,7 @@ document.getElementById('formKeluar').addEventListener('submit', async (e) => {
 
   try {
     const res = await DB.catatKeluar({ produkId, jumlah, jenisKeluar: jenis, keterangan: ket });
+    DraftManager.clearKeluarDraft();
     document.getElementById('formKeluar').reset();
     document.getElementById('keluarStokInfo').textContent = 'Pilih barang terlebih dahulu';
     document.getElementById('keluarStokInfo').style.color = '';
@@ -2111,6 +2360,7 @@ function renderOpname(filterCat = currentOpnameCategory) {
     `;
   }).join('');
   renderOpnameHistory();
+  DraftManager.restoreOpnameDraft();
 }
 
 function updateDiff(id) {
@@ -2120,12 +2370,15 @@ function updateDiff(id) {
   const el     = document.getElementById(`diff-${id}`);
   if (!el) return;
   if (document.getElementById(`opname-${id}`).value === '') {
-    el.textContent = '—'; el.className = 'diff-zero'; return;
+    el.textContent = '—'; el.className = 'diff-zero';
+    DraftManager.saveOpnameDraft();
+    return;
   }
   const diff = fisik - sistem;
   if (diff > 0)      { el.textContent = `+${diff}`; el.className = 'diff-pos'; }
   else if (diff < 0) { el.textContent = `${diff}`;  el.className = 'diff-neg'; }
   else               { el.textContent = '0 (Cocok)'; el.className = 'diff-zero'; }
+  DraftManager.saveOpnameDraft();
 }
 
 document.getElementById('btnResetOpname').addEventListener('click', () => {
@@ -2135,6 +2388,7 @@ document.getElementById('btnResetOpname').addEventListener('click', () => {
     const el = document.getElementById(`diff-${id}`);
     if (el) { el.textContent = '—'; el.className = 'diff-zero'; }
   });
+  DraftManager.clearOpnameDraft();
   showToast('Input opname direset.', 'info');
 });
 
@@ -2164,6 +2418,7 @@ document.getElementById('btnSesuaikanOpname').addEventListener('click', () => {
     `Akan menyesuaikan stok untuk ${changes.length} barang berdasarkan hasil hitung fisik. Lanjutkan?`,
     async () => {
       await DB.catatOpname(changes);
+      DraftManager.clearOpnameDraft();
       renderOpname();
       showToast(`Stok ${changes.length} barang berhasil disesuaikan dan disimpan ke database!`, 'success');
     }
@@ -3706,6 +3961,16 @@ const Cart = {
         this.items = JSON.parse(saved);
         if (!Array.isArray(this.items)) this.items = [];
       }
+      const savedNote = localStorage.getItem('sm_draft_pos_note');
+      if (savedNote && document.getElementById('posOrderNote')) {
+        document.getElementById('posOrderNote').value = savedNote;
+        this.orderNote = savedNote;
+      }
+      const savedCash = localStorage.getItem('sm_draft_pos_cash');
+      if (savedCash && document.getElementById('posCashInput')) {
+        document.getElementById('posCashInput').value = savedCash;
+        this.cashPaid = Number(savedCash) || 0;
+      }
     } catch {
       this.items = [];
     }
@@ -3718,6 +3983,9 @@ const Cart = {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.items));
     } catch {}
     this.updateBadges();
+    if (typeof flashAutoSaveIndicator === 'function') {
+      flashAutoSaveIndicator('Keranjang tersimpan...');
+    }
   },
 
   addItem(prod, qty = 1) {
@@ -3796,6 +4064,10 @@ const Cart = {
     if (cashInput) cashInput.value = '';
     const noteInput = document.getElementById('posOrderNote');
     if (noteInput) noteInput.value = '';
+    try {
+      localStorage.removeItem('sm_draft_pos_cash');
+      localStorage.removeItem('sm_draft_pos_note');
+    } catch {}
     this.save();
     this.renderCartUI();
     renderPosProductGrid();
@@ -4326,6 +4598,8 @@ window.renderPosProductGrid = renderPosProductGrid;
 window.DB             = DB;
 window.Cart           = Cart;
 window.Auth           = Auth;
+window.DraftManager   = DraftManager;
+window.flashAutoSaveIndicator = flashAutoSaveIndicator;
 window.renderTopSellingTable = renderTopSellingTable;
 window.quickRestockProduct   = quickRestockProduct;
 window.calculateFinancials   = calculateFinancials;
@@ -4334,6 +4608,7 @@ async function initApp() {
   await DB.init();
   Cart.init();
   Auth.init();
+  DraftManager.initListeners();
   switchTab('dashboard');
 }
 initApp();
