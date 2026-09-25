@@ -146,6 +146,11 @@
         <i class="ri-archive-line"></i>
         <span>Katalog Barang</span>
       </a>
+      <a href="#" class="nav-item" data-tab="pos" id="nav-pos">
+        <i class="ri-shopping-cart-2-fill"></i>
+        <span>Kasir (POS)</span>
+        <span class="nav-badge badge-pos" id="sidebarCartBadge" style="display:none;">0</span>
+      </a>
       <a href="#" class="nav-item" data-tab="masuk" id="nav-masuk">
         <i class="ri-arrow-down-circle-line"></i>
         <span>Barang Masuk</span>
@@ -214,6 +219,11 @@
           <i class="ri-qr-scan-2-line"></i>
           <span class="scan-label">Scan Barcode</span>
         </button>
+        <button class="topbar-cart-btn" id="topbarCartBtn" title="Buka Keranjang Kasir" aria-label="Buka Keranjang Kasir">
+          <i class="ri-shopping-cart-2-line"></i>
+          <span class="cart-label">Kasir POS</span>
+          <span class="topbar-cart-badge" id="topbarCartBadge" style="display:none;">0</span>
+        </button>
         <button class="topbar-refresh-btn" id="topbarRefreshBtn" title="Refresh &amp; Sinkronkan Data" aria-label="Refresh &amp; Sinkronkan Data">
           <i class="ri-refresh-line" id="topbarRefreshIcon"></i>
           <span class="refresh-label">Refresh</span>
@@ -279,38 +289,149 @@
 
       <!-- ===================== TAB: DASHBOARD ===================== -->
       <section class="tab-view active" id="tab-dashboard">
-        <div class="stats-grid">
-          <div class="stat-card card-blue">
-            <div class="stat-icon"><i class="ri-archive-2-fill"></i></div>
-            <div class="stat-info">
-              <p class="stat-label">Total Jenis Barang</p>
-              <h2 class="stat-value" id="statJenis">0</h2>
-              <p class="stat-sub">SKU Terdaftar</p>
+        
+        <!-- Header Laporan Keuangan & Filter Periode -->
+        <div class="dash-financial-header">
+          <div class="dash-financial-title">
+            <div class="dash-fin-icon"><i class="ri-funds-box-fill"></i></div>
+            <div>
+              <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
+                <h3 style="margin:0;font-size:1.15rem;font-weight:800;">Laporan Laba Bersih &amp; Omzet Penjualan</h3>
+                <span class="badge badge-pos" id="badgeCurrentPeriodLabel">Hari Ini</span>
+              </div>
+              <p class="dash-fin-sub" id="dashFinPeriodSub">Ringkasan pendapatan, modal penjualan (HPP), dan laba bersih toko</p>
             </div>
           </div>
-          <div class="stat-card card-green">
-            <div class="stat-icon"><i class="ri-stack-fill"></i></div>
-            <div class="stat-info">
-              <p class="stat-label">Total Unit Stok</p>
-              <h2 class="stat-value" id="statUnit">0</h2>
-              <p class="stat-sub">Total Keseluruhan Barang</p>
+          <div class="dash-period-actions">
+            <div class="dash-period-switch" id="dashPeriodSwitch">
+              <button type="button" class="dash-period-btn active" data-period="today" id="btnPeriodToday">
+                <i class="ri-calendar-check-line"></i> Hari Ini
+              </button>
+              <button type="button" class="dash-period-btn" data-period="7days" id="btnPeriod7Days">
+                7 Hari
+              </button>
+              <button type="button" class="dash-period-btn" data-period="month" id="btnPeriodMonth">
+                Bulan Ini
+              </button>
+              <button type="button" class="dash-period-btn" data-period="all" id="btnPeriodAll">
+                Semua
+              </button>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" id="btnPrintFinReport" title="Cetak Ringkasan Laporan Laba Rugi">
+              <i class="ri-printer-line"></i> <span>Cetak Laporan</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 Grid Stat Finansial & Omzet -->
+        <div class="financial-stats-grid">
+          <!-- Card Omzet -->
+          <div class="fin-stat-card card-omzet">
+            <div class="fin-stat-top">
+              <span class="fin-stat-label">Omzet Penjualan (Kotor)</span>
+              <div class="fin-stat-icon-wrap icon-omzet"><i class="ri-money-dollar-circle-fill"></i></div>
+            </div>
+            <h2 class="fin-stat-value" id="statOmzet">Rp 0</h2>
+            <div class="fin-stat-footer">
+              <span id="statOmzetTxCount"><i class="ri-shopping-cart-2-line"></i> 0 Transaksi</span>
+              <span class="fin-stat-badge badge-green" id="statOmzetItemSold">0 Pcs Terjual</span>
             </div>
           </div>
-          <div class="stat-card card-purple">
-            <div class="stat-icon"><span class="stat-rp">Rp</span></div>
-            <div class="stat-info">
-              <p class="stat-label">Nilai Aset Toko</p>
-              <h2 class="stat-value" id="statNilai">Rp 0</h2>
-              <p class="stat-sub">Estimasi Modal Stok</p>
+
+          <!-- Card Laba Bersih -->
+          <div class="fin-stat-card card-profit">
+            <div class="fin-stat-top">
+              <span class="fin-stat-label">Laba Bersih (Keuntungan)</span>
+              <div class="fin-stat-icon-wrap icon-profit"><i class="ri-funds-fill"></i></div>
+            </div>
+            <h2 class="fin-stat-value text-green" id="statLabaBersih">Rp 0</h2>
+            <div class="fin-stat-footer">
+              <span id="statMarginPct"><i class="ri-percent-line"></i> 0% Margin Laba</span>
+              <span class="fin-stat-badge badge-purple" id="statProfitBadge">Laba Bersih</span>
             </div>
           </div>
-          <div class="stat-card card-red">
-            <div class="stat-icon"><i class="ri-error-warning-fill"></i></div>
-            <div class="stat-info">
-              <p class="stat-label">Stok Kritis</p>
-              <h2 class="stat-value" id="statKritis">0</h2>
-              <p class="stat-sub">Barang Perlu Restock</p>
+
+          <!-- Card HPP Modal Terjual -->
+          <div class="fin-stat-card card-hpp">
+            <div class="fin-stat-top">
+              <span class="fin-stat-label">Modal Penjualan (HPP)</span>
+              <div class="fin-stat-icon-wrap icon-hpp"><i class="ri-shopping-basket-2-fill"></i></div>
             </div>
+            <h2 class="fin-stat-value" id="statHpp">Rp 0</h2>
+            <div class="fin-stat-footer">
+              <span>Total Modal Pokok Barang Terjual</span>
+              <span class="fin-stat-badge badge-yellow">Biaya HPP</span>
+            </div>
+          </div>
+
+          <!-- Card Nilai Aset Stok -->
+          <div class="fin-stat-card card-aset">
+            <div class="fin-stat-top">
+              <span class="fin-stat-label">Nilai Aset Modal Stok</span>
+              <div class="fin-stat-icon-wrap icon-aset"><i class="ri-store-3-fill"></i></div>
+            </div>
+            <h2 class="fin-stat-value" id="statNilai">Rp 0</h2>
+            <div class="fin-stat-footer">
+              <span>Modal Keseluruhan Stok di Toko</span>
+              <span class="fin-stat-badge badge-blue">Aset Berjalan</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mini Stats Operasional Gudang -->
+        <div class="operational-stats-bar">
+          <div class="op-stat-item">
+            <i class="ri-archive-2-fill text-blue"></i>
+            <div>
+              <span class="op-stat-label">Total SKU Barang</span>
+              <strong class="op-stat-val" id="statJenis">0</strong>
+            </div>
+          </div>
+          <div class="op-stat-item">
+            <i class="ri-stack-fill text-green"></i>
+            <div>
+              <span class="op-stat-label">Total Unit Fisik</span>
+              <strong class="op-stat-val" id="statUnit">0</strong>
+            </div>
+          </div>
+          <div class="op-stat-item">
+            <i class="ri-error-warning-fill text-red"></i>
+            <div>
+              <span class="op-stat-label">Stok Kritis / Habis</span>
+              <strong class="op-stat-val text-red" id="statKritis">0</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabel Widget: Produk Paling Menguntungkan & Terlaris -->
+        <div class="card mb-3" style="margin-bottom:1.25rem;">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
+            <div>
+              <h3 style="margin:0;font-size:1rem;"><i class="ri-trophy-fill text-yellow"></i> Produk Paling Menguntungkan &amp; Terlaris</h3>
+              <span style="font-size:.76rem;color:var(--text-3);" id="topProfitablePeriodDesc">Berdasarkan data penjualan periode terpilih</span>
+            </div>
+            <span class="badge badge-pos" id="badgeTopCount">Top 5 Produk</span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="tableTopProfitable">
+              <thead>
+                <tr>
+                  <th>Nama Barang</th>
+                  <th style="text-align:center;">Terjual</th>
+                  <th style="text-align:right;">Total Omzet</th>
+                  <th style="text-align:right;">Modal (HPP)</th>
+                  <th style="text-align:right;">Laba Bersih</th>
+                  <th style="text-align:center;">Margin</th>
+                </tr>
+              </thead>
+              <tbody id="bodyTopProfitable">
+                <tr>
+                  <td colspan="6" class="empty-row" style="text-align:center;padding:1.5rem;">
+                    <i class="ri-loader-4-line ri-spin"></i> Menghitung data keuangan...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -555,6 +676,113 @@
         </div>
       </section>
 
+      <!-- ===================== TAB: KASIR / CART POS ===================== -->
+      <section class="tab-view" id="tab-pos">
+        <div class="pos-layout">
+          <!-- Kolom Kiri: Katalog Cepat & Pencarian Produk -->
+          <div class="pos-products-col">
+            <div class="card pos-search-card">
+              <div class="pos-search-header">
+                <div class="pos-search-box">
+                  <i class="ri-search-line"></i>
+                  <input type="text" id="posSearchInput" placeholder="Cari nama barang / barcode (ketik atau scan)..." autocomplete="off" />
+                  <button type="button" class="pos-search-clear" id="btnPosSearchClear" style="display:none;" title="Hapus Pencarian"><i class="ri-close-line"></i></button>
+                </div>
+                <button type="button" class="btn btn-primary pos-scan-btn" id="btnScanPos" title="Scan Barcode Kamera Langsung ke Keranjang">
+                  <i class="ri-qr-scan-2-line"></i> <span>Scan Barcode</span>
+                </button>
+              </div>
+              <!-- Kategori Filter Pills -->
+              <div class="category-filter-scroll" id="posCategoryPills"></div>
+            </div>
+
+            <!-- Grid Barang Cepat -->
+            <div class="pos-grid-container">
+              <div class="pos-product-grid" id="posProductGrid">
+                <!-- Diisi secara dinamis -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Kolom Kanan: Keranjang Kasir & Pembayaran -->
+          <div class="pos-cart-col">
+            <div class="card pos-cart-card">
+              <!-- Cart Header -->
+              <div class="pos-cart-header">
+                <div class="pos-cart-title">
+                  <i class="ri-shopping-cart-2-fill text-primary"></i>
+                  <h3>Keranjang Kasir</h3>
+                  <span class="badge badge-pos" id="posCartBadge">0 Item</span>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm text-red" id="btnPosClearCart" title="Kosongkan Semua Barang di Keranjang">
+                  <i class="ri-delete-bin-line"></i> <span>Reset</span>
+                </button>
+              </div>
+
+              <!-- Cart Item List -->
+              <div class="pos-cart-body" id="posCartList">
+                <div class="empty-state">
+                  <i class="ri-shopping-bag-3-line"></i>
+                  <p>Keranjang kasir masih kosong</p>
+                  <small style="color:var(--text-3);display:block;margin-top:.3rem;">
+                    Pilih barang dari katalog di samping atau scan barcode untuk menambah barang.
+                  </small>
+                </div>
+              </div>
+
+              <!-- Cart Summary & Payment -->
+              <div class="pos-cart-footer">
+                <div class="pos-summary-line">
+                  <span>Total Barang</span>
+                  <strong id="posSummaryQty">0 item (0 pcs)</strong>
+                </div>
+                <div class="pos-total-line">
+                  <span>Total Tagihan</span>
+                  <strong class="pos-total-amount" id="posTotalAmount">Rp 0</strong>
+                </div>
+
+                <!-- Payment Form -->
+                <div class="pos-payment-section">
+                  <div class="form-group mb-2">
+                    <label for="posCashInput" style="font-weight:600;font-size:.82rem;">Uang Tunai / Diterima (Rp)</label>
+                    <div class="pos-cash-input-wrap">
+                      <span class="pos-curr-prefix">Rp</span>
+                      <input type="number" id="posCashInput" class="form-control pos-cash-input" placeholder="0" min="0" />
+                    </div>
+                  </div>
+
+                  <!-- Quick Cash Buttons -->
+                  <div class="pos-quick-cash-row">
+                    <button type="button" class="pos-quick-cash-btn" id="btnCashExact">Uang Pas</button>
+                    <button type="button" class="pos-quick-cash-btn" data-val="10000">+10rb</button>
+                    <button type="button" class="pos-quick-cash-btn" data-val="20000">+20rb</button>
+                    <button type="button" class="pos-quick-cash-btn" data-val="50000">+50rb</button>
+                    <button type="button" class="pos-quick-cash-btn" data-val="100000">+100rb</button>
+                  </div>
+
+                  <!-- Kembalian Display -->
+                  <div class="pos-change-box" id="posChangeBox" style="display:none;">
+                    <span id="posChangeLabel">Kembalian:</span>
+                    <strong id="posChangeAmount">Rp 0</strong>
+                  </div>
+
+                  <!-- Catatan Transaksi -->
+                  <div class="form-group mb-2 mt-2">
+                    <input type="text" id="posOrderNote" class="form-control form-control-sm" placeholder="Catatan transaksi / nama pelanggan (opsional)..." />
+                  </div>
+
+                  <!-- Checkout Button -->
+                  <button type="button" class="btn btn-success btn-block pos-btn-checkout" id="btnPosCheckout" disabled>
+                    <i class="ri-check-double-line"></i>
+                    <span>Selesaikan Transaksi (Cetak Struk)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ===================== TAB: HITUNG BARANG / OPNAME ===================== -->
       <section class="tab-view" id="tab-opname">
         <div class="card" style="margin-bottom:1rem;">
@@ -751,6 +979,9 @@
         
         <!-- Pilihan Mode Cepat -->
         <div class="scanner-mode-switch" id="scannerModeSwitch">
+          <button type="button" class="scan-mode-btn" data-mode="cart" id="btnModeCart">
+            <i class="ri-shopping-cart-2-line"></i> Keranjang POS
+          </button>
           <button type="button" class="scan-mode-btn active" data-mode="action" id="btnModeAction">
             <i class="ri-flashlight-line"></i> Aksi Cepat
           </button>
@@ -801,12 +1032,94 @@
           </span>
         </div>
 
+        <!-- Live Bar Keranjang Saat Scan Beruntun -->
+        <div class="scanner-cart-livebar" id="scannerCartLiveBar" style="display:none;">
+          <div class="scanner-cart-liveinfo">
+            <i class="ri-shopping-cart-2-fill text-primary" style="font-size:1.35rem;"></i>
+            <div>
+              <strong id="scannerCartItemCount">0 Barang di Keranjang</strong>
+              <div id="scannerCartTotalPrice" style="font-size:.76rem;color:var(--text-2);">Total: Rp 0</div>
+            </div>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="btnScannerOpenCart">
+            <i class="ri-arrow-right-line"></i> Buka Kasir
+          </button>
+        </div>
+
         <!-- Banner Auto Input Notification -->
         <div id="scanAutoBanner" style="display:none;"></div>
 
         <!-- Kartu Hasil Scan (Instant Action Card) -->
         <div class="scan-result-card" id="scanResultCard" style="display:none;"></div>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: STRUK PEMBAYARAN KASIR (POS) ===================== -->
+  <div class="modal-overlay" id="modalStruk">
+    <div class="modal-box modal-struk-box">
+      <div class="modal-header no-print">
+        <div style="display:flex;align-items:center;gap:.5rem;">
+          <div class="struk-header-icon"><i class="ri-receipt-line"></i></div>
+          <div>
+            <h3 style="margin:0;font-size:1.05rem;">Struk Pembayaran Kasir</h3>
+            <span style="font-size:.74rem;color:var(--text-3);" id="strukInvoiceSub">No. Transaksi</span>
+          </div>
+        </div>
+        <button class="modal-close" id="btnCloseStruk" aria-label="Tutup"><i class="ri-close-line"></i></button>
+      </div>
+
+      <div class="modal-body p-3">
+        <!-- Thermal Receipt Container -->
+        <div class="thermal-receipt" id="thermalReceiptContent">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <div class="modal-footer no-print" style="display:flex;gap:.5rem;justify-content:space-between;align-items:center;flex-wrap:wrap;padding:1rem;">
+        <button type="button" class="btn btn-ghost btn-sm" id="btnCopyWaStruk" title="Salin teks struk untuk dikirim ke WhatsApp">
+          <i class="ri-whatsapp-line text-green" style="font-size:1.1rem;"></i>
+          <span>Salin WhatsApp</span>
+        </button>
+        <div style="display:flex;gap:.5rem;">
+          <button type="button" class="btn btn-primary btn-sm" id="btnPrintStruk">
+            <i class="ri-printer-line"></i> Cetak Struk
+          </button>
+          <button type="button" class="btn btn-success btn-sm" id="btnNewTransaction">
+            <i class="ri-add-line"></i> Transaksi Baru
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL: CETAK LAPORAN LABA RUGI ===================== -->
+  <div class="modal-overlay" id="modalFinReport">
+    <div class="modal-box modal-lg">
+      <div class="modal-header no-print">
+        <div style="display:flex;align-items:center;gap:.5rem;">
+          <div class="struk-header-icon" style="background:var(--green-light);color:var(--green);"><i class="ri-file-chart-fill"></i></div>
+          <div>
+            <h3 style="margin:0;font-size:1.05rem;">Laporan Laba Rugi &amp; Omzet</h3>
+            <span style="font-size:.74rem;color:var(--text-3);" id="finReportPeriodSub">Periode Penjualan</span>
+          </div>
+        </div>
+        <button class="modal-close" id="btnCloseFinReport" aria-label="Tutup"><i class="ri-close-line"></i></button>
+      </div>
+
+      <div class="modal-body p-3">
+        <!-- Printable Report Container -->
+        <div class="fin-report-paper" id="finReportPrintArea">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <div class="modal-footer no-print" style="display:flex;gap:.5rem;justify-content:flex-end;align-items:center;padding:1rem;">
+        <button type="button" class="btn btn-ghost" id="btnCancelFinReport">Tutup</button>
+        <button type="button" class="btn btn-primary" id="btnDoPrintFinReport">
+          <i class="ri-printer-line"></i> Cetak / Simpan PDF
+        </button>
       </div>
     </div>
   </div>
@@ -1106,6 +1419,11 @@
     <button type="button" class="bottom-nav-item" data-tab="produk" id="bnav-produk">
       <i class="ri-archive-line"></i>
       <span>Katalog</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-tab="pos" id="bnav-pos">
+      <i class="ri-shopping-cart-2-fill"></i>
+      <span>Kasir</span>
+      <span class="bnav-badge" id="bnavCartBadge" style="display:none;">0</span>
     </button>
     <button type="button" class="bottom-nav-item bnav-scan-highlight" id="bnav-scan" title="Scan Barcode">
       <i class="ri-qr-scan-2-line"></i>

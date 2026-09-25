@@ -246,6 +246,7 @@ const server = http.createServer(async (req, res) => {
           namaProduk: prod.nama,
           satuan: prod.satuan,
           jumlah: qty,
+          hargaBeli: Number(prod.hargaBeli) || 0,
           hargaSatuan: prod.hargaJual,
           total: qty * prod.hargaJual,
           operator: payload.operator || 'Kasir',
@@ -261,6 +262,90 @@ const server = http.createServer(async (req, res) => {
           message: `Berhasil mengeluarkan ${qty} ${prod.satuan} "${prod.nama}"`,
           product: prod,
           transaction: tx,
+          data: database
+        });
+      } catch (err) {
+        return sendJson(res, 500, { success: false, message: err.message });
+      }
+    }
+
+    // 3b. POST /api/pos/checkout -> Checkout keranjang kasir multi-barang sekaligus
+    if (url === '/api/pos/checkout' && req.method === 'POST') {
+      try {
+        const payload = await parseJsonBody(req);
+        database = loadDatabase();
+        if (!Array.isArray(database.sales)) database.sales = [];
+
+        const { invoiceNo, items, totalAmount, cashPaid, changeDue, operator, keterangan } = payload;
+        if (!Array.isArray(items) || items.length === 0) {
+          return sendJson(res, 400, { success: false, message: 'Keranjang kasir kosong' });
+        }
+
+        const now = new Date().toISOString();
+        const inv = invoiceNo || ('INV-' + Date.now().toString(36).toUpperCase());
+        const createdTxs = [];
+
+        for (const item of items) {
+          const pIndex = database.products.findIndex(p => p.id === item.produkId);
+          if (pIndex > -1) {
+            const prod = database.products[pIndex];
+            const qty = Number(item.qty) || 1;
+            const currentStock = Number(prod.stok) || 0;
+            prod.stok = currentStock - qty;
+            prod.updatedAt = now;
+
+            const unitPrice = Number(item.hargaJual) || Number(prod.hargaJual) || 0;
+            const itemTotal = qty * unitPrice;
+
+            const tx = {
+              id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+              invoiceNo: inv,
+              jenis: 'keluar',
+              subJenis: 'penjualan',
+              produkId: prod.id,
+              namaProduk: prod.nama,
+              satuan: prod.satuan || 'pcs',
+              jumlah: qty,
+              hargaBeli: Number(prod.hargaBeli) || 0,
+              hargaSatuan: unitPrice,
+              total: itemTotal,
+              operator: operator || 'Kasir',
+              keterangan: `[KASIR POS #${inv}] ${keterangan || ''}`.trim(),
+              tgl: now
+            };
+            database.transactions.unshift(tx);
+            createdTxs.push(tx);
+          }
+        }
+
+        const saleRecord = {
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          invoiceNo: inv,
+          items: items.map(it => ({
+            produkId: it.produkId,
+            nama: it.nama,
+            satuan: it.satuan || 'pcs',
+            qty: Number(it.qty) || 1,
+            hargaJual: Number(it.hargaJual) || 0,
+            subtotal: (Number(it.qty) || 1) * (Number(it.hargaJual) || 0)
+          })),
+          totalAmount: Number(totalAmount) || 0,
+          cashPaid: Number(cashPaid) || 0,
+          changeDue: Number(changeDue) || 0,
+          operator: operator || 'Kasir',
+          keterangan: keterangan || '',
+          tgl: now
+        };
+
+        database.sales.unshift(saleRecord);
+        database.lastUpdated = now;
+        saveDatabase(database);
+
+        return sendJson(res, 200, {
+          success: true,
+          message: `Transaksi kasir ${inv} berhasil diproses!`,
+          sale: saleRecord,
+          transactions: createdTxs,
           data: database
         });
       } catch (err) {
