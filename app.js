@@ -183,6 +183,7 @@ const DB = {
   },
 
   getProducts()     { return this._cache.products; },
+  getProductById(id){ return this._cache.products.find(p => p.id === id) || null; },
   getTransactions() { return this._cache.transactions; },
   getOpnames()      { return this._cache.opnames; },
 
@@ -249,13 +250,19 @@ const DB = {
   async catatMasuk(payload) {
     this._cache.lastUpdated = new Date().toISOString();
     if (this._isServer) {
+      let json = null;
       try {
         const res = await fetch(this.getApiUrl('/api/masuk'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const json = await res.json();
+        json = await res.json();
+      } catch (netErr) {
+        console.warn('Server offline/tidak terjangkau, menggunakan penyimpanan lokal:', netErr);
+        json = null;
+      }
+      if (json) {
         if (json.success && json.data) {
           this._cache = json.data;
           this._persistLocal();
@@ -263,8 +270,6 @@ const DB = {
         } else {
           throw new Error(json.message || 'Gagal menyimpan barang masuk');
         }
-      } catch (err) {
-        if (!err.message.includes('Gagal')) throw err;
       }
     }
 
@@ -302,13 +307,19 @@ const DB = {
   async catatKeluar(payload) {
     this._cache.lastUpdated = new Date().toISOString();
     if (this._isServer) {
+      let json = null;
       try {
         const res = await fetch(this.getApiUrl('/api/keluar'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const json = await res.json();
+        json = await res.json();
+      } catch (netErr) {
+        console.warn('Server offline/tidak terjangkau, menggunakan penyimpanan lokal:', netErr);
+        json = null;
+      }
+      if (json) {
         if (json.success && json.data) {
           this._cache = json.data;
           this._persistLocal();
@@ -316,8 +327,6 @@ const DB = {
         } else {
           throw new Error(json.message || 'Gagal menyimpan barang keluar');
         }
-      } catch (err) {
-        if (err.message && !err.message.includes('Gagal')) throw err;
       }
     }
 
@@ -355,13 +364,19 @@ const DB = {
   async checkoutCart(payload) {
     this._cache.lastUpdated = new Date().toISOString();
     if (this._isServer) {
+      let json = null;
       try {
         const res = await fetch(this.getApiUrl('/api/pos/checkout'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const json = await res.json();
+        json = await res.json();
+      } catch (netErr) {
+        console.warn('Server offline/tidak terjangkau, menggunakan penyimpanan lokal:', netErr);
+        json = null;
+      }
+      if (json) {
         if (json.success && json.data) {
           this._cache = json.data;
           this._persistLocal();
@@ -369,8 +384,6 @@ const DB = {
         } else {
           throw new Error(json.message || 'Gagal memproses transaksi kasir di server');
         }
-      } catch (err) {
-        if (err.message && !err.message.includes('Gagal')) throw err;
       }
     }
 
@@ -744,6 +757,12 @@ function switchTab(name) {
   // Update topbar title
   document.getElementById('topbarTitle').textContent = tabTitles[name] || name;
 
+  // Set automatic scanner mode for POS
+  if (name === 'pos') {
+    scannerMode = 'cart';
+    scannerTarget = 'pos';
+  }
+
   // Refresh content
   renderByTab(name);
 
@@ -780,7 +799,8 @@ document.querySelectorAll('.bottom-nav-item').forEach(el => {
       try { navigator.vibrate(12); } catch {}
     }
     if (el.id === 'bnav-scan') {
-      openScannerModal('action');
+      const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+      openScannerModal(activeTab === 'pos' ? 'cart' : 'action');
       return;
     }
     const tab = el.dataset.tab;
@@ -937,8 +957,10 @@ function isDateInPeriod(dateStr, period) {
   }
 
   if (period === '7days') {
-    const diffDays = (now.getTime() - d.getTime()) / (1000 * 3600 * 24);
-    return diffDays >= 0 && diffDays <= 7;
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+    const startOf7DaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7, 0, 0, 0, 0).getTime();
+    const t = d.getTime();
+    return t >= startOf7DaysAgo && t <= endOfToday;
   }
 
   if (period === 'month') {
@@ -2615,7 +2637,8 @@ async function handleScannedBarcode(rawCode) {
           hargaBeli: found.hargaBeli,
           keterangan: 'Scan Cepat Auto Masuk (+1)'
         });
-        showAutoScanBanner('masuk', found, 1);
+        const fresh = DB.getProductById(found.id) || found;
+        showAutoScanBanner('masuk', fresh, 1);
         populateProdukSelects();
         const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
         renderByTab(activeTab);
@@ -2637,7 +2660,8 @@ async function handleScannedBarcode(rawCode) {
           jenisKeluar: 'penjualan',
           keterangan: 'Scan Cepat Kasir (-1)'
         });
-        showAutoScanBanner('keluar', found, 1);
+        const fresh = DB.getProductById(found.id) || found;
+        showAutoScanBanner('keluar', fresh, 1);
         populateProdukSelects();
         const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
         renderByTab(activeTab);
@@ -2659,25 +2683,29 @@ async function handleScannedBarcode(rawCode) {
 
 function showAutoScanBanner(type, prod, qty) {
   const b = document.getElementById('scanAutoBanner');
-  if (!b) return;
+  if (!b || !prod) return;
   const isCart = type === 'cart';
   const isMasuk = type === 'masuk';
-  const updatedStok = Number(prod.stok);
+  const updatedStok = Number(prod.stok) || 0;
+  const prodSatuan = prod.satuan || 'pcs';
+  const prodNama = prod.nama || 'Barang';
   const borderColor = isCart ? 'var(--primary)' : isMasuk ? 'var(--green)' : 'var(--red)';
+  const bannerBg = isCart ? 'rgba(59, 130, 246, 0.12)' : isMasuk ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)';
+  const bannerColor = isCart ? 'var(--primary)' : isMasuk ? 'var(--green)' : 'var(--red)';
   const iconClass = isCart ? 'ri-shopping-cart-2-fill text-primary' : isMasuk ? 'ri-arrow-down-circle-fill text-green' : 'ri-arrow-up-circle-fill text-red';
   const titleText = isCart
-    ? `+${qty} "${prod.nama}" ke keranjang kasir`
-    : `${isMasuk ? '+'+qty : '-'+qty} ${prod.satuan} ${prod.nama}`;
+    ? `+${qty} "${prodNama}" ke keranjang kasir`
+    : `${isMasuk ? '+'+qty : '-'+qty} ${prodSatuan} ${prodNama}`;
   const totalInCart = typeof Cart !== 'undefined' ? Cart.getTotalQty() : qty;
   const subText = isCart
     ? `Berhasil ditambahkan &bull; Total Keranjang: <strong>${totalInCart} pcs</strong>`
-    : `${isMasuk ? 'Barang masuk tercatat!' : 'Penjualan kasir tercatat!'} &bull; Stok saat ini: <strong>${updatedStok} ${prod.satuan}</strong>`;
+    : `${isMasuk ? 'Barang masuk tercatat!' : 'Penjualan kasir tercatat!'} &bull; Stok saat ini: <strong>${updatedStok} ${prodSatuan}</strong>`;
 
   b.innerHTML = `
-    <div class="scan-banner-success" style="border-left:4px solid ${borderColor};">
+    <div class="scan-banner-success" style="border-left:4px solid ${borderColor};background:${bannerBg};color:${bannerColor};">
       <i class="${iconClass}" style="font-size:1.3rem;"></i>
       <div style="flex:1;">
-        <div style="font-weight:700;">${titleText}</div>
+        <div style="font-weight:700;color:var(--text);">${titleText}</div>
         <div style="font-size:.74rem;color:var(--text-2);">${subText}</div>
       </div>
     </div>
@@ -2896,7 +2924,8 @@ function renderNotFoundCard(code) {
 
 // Event Listeners Scanner
 document.getElementById('topbarScanBtn')?.addEventListener('click', () => {
-  openScannerModal('action');
+  const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+  openScannerModal(activeTab === 'pos' ? 'cart' : 'action');
 });
 document.getElementById('topbarCartBtn')?.addEventListener('click', () => {
   switchTab('pos');
@@ -3028,6 +3057,8 @@ window.addEventListener('keydown', (e) => {
       hwBarcodeBuffer = '';
       const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
       if (activeTab === 'pos') {
+        scannerMode = 'cart';
+        scannerTarget = 'pos';
         handleScannedBarcode(code);
       } else {
         openScannerModal('action');
@@ -3583,6 +3614,15 @@ const Cart = {
     showToast(`+${nQty} "${prod.nama}" dimasukkan ke keranjang kasir!`, 'success');
   },
 
+  addItemById(produkId, qty = 1) {
+    const prod = DB.getProductById(produkId);
+    if (prod) {
+      this.addItem(prod, qty);
+    } else {
+      showToast('Barang tidak ditemukan di katalog', 'error');
+    }
+  },
+
   updateQty(produkId, newQty) {
     const qty = Number(newQty);
     const idx = this.items.findIndex(it => it.produkId === produkId);
@@ -3861,6 +3901,30 @@ function renderPosTab() {
       if (btnClear) btnClear.style.display = posSearchQuery ? 'block' : 'none';
       renderPosProductGrid();
     };
+
+    searchInput.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const q = posSearchQuery;
+        if (!q) return;
+        const products = DB.getProducts();
+        let match = products.find(p => (p.kode && p.kode.toLowerCase() === q) || p.id.toLowerCase() === q);
+        if (!match) {
+          const filtered = products.filter(p => p.nama && p.nama.toLowerCase().includes(q));
+          if (filtered.length === 1) match = filtered[0];
+        }
+        if (match) {
+          Cart.addItem(match, 1);
+          searchInput.value = '';
+          posSearchQuery = '';
+          if (btnClear) btnClear.style.display = 'none';
+          renderPosProductGrid();
+          searchInput.focus();
+        } else {
+          showToast(`Barang "${q}" tidak ditemukan di katalog`, 'warning');
+        }
+      }
+    };
   }
   if (btnClear) {
     btnClear.onclick = () => {
@@ -3961,7 +4025,7 @@ function renderPosProductGrid() {
     const isOut = stockVal <= 0;
 
     return `
-      <div class="pos-prod-card ${inCartQty > 0 ? 'in-cart' : ''}" onclick="Cart.addItem(${JSON.stringify(prod).replace(/"/g, '&quot;')}, 1)">
+      <div class="pos-prod-card ${inCartQty > 0 ? 'in-cart' : ''}" onclick="Cart.addItemById('${prod.id}', 1)">
         <div class="pos-prod-top">
           <span class="pos-prod-cat">${prod.kategori || 'Umum'}</span>
           ${inCartQty > 0 ? `<span class="pos-prod-incart-badge"><i class="ri-check-line"></i> ${inCartQty}</span>` : ''}
@@ -3973,9 +4037,9 @@ function renderPosProductGrid() {
         <div class="pos-prod-bottom">
           <div>
             <div class="pos-prod-price">${formatRupiah(prod.hargaJual)}</div>
-            <div class="pos-prod-stock ${isOut ? 'empty' : ''}">Stok: ${stockVal} ${prod.satuan}</div>
+            <div class="pos-prod-stock ${isOut ? 'empty' : ''}">Stok: ${stockVal} ${prod.satuan || 'pcs'}</div>
           </div>
-          <button type="button" class="pos-prod-btn-add" title="Tambah ke Keranjang" onclick="event.stopPropagation(); Cart.addItem(${JSON.stringify(prod).replace(/"/g, '&quot;')}, 1)">
+          <button type="button" class="pos-prod-btn-add" title="Tambah ke Keranjang" onclick="event.stopPropagation(); Cart.addItemById('${prod.id}', 1)">
             <i class="ri-add-line"></i>
           </button>
         </div>
@@ -4123,8 +4187,10 @@ window.filterKatalogByGroup = filterKatalogByGroup;
 window.filterPosByCategory  = filterPosByCategory;
 window.renderPosTab   = renderPosTab;
 window.renderPosProductGrid = renderPosProductGrid;
+window.DB             = DB;
 window.Cart           = Cart;
 window.Auth           = Auth;
+window.calculateFinancials = calculateFinancials;
 
 async function initApp() {
   await DB.init();
