@@ -164,6 +164,15 @@
           </div>
         </div>
 
+        <!-- Ringkasan Per Jenis Produk (Voucher, Rokok, Makanan & Minuman, ATK) -->
+        <div class="category-summary-section">
+          <div class="category-summary-header">
+            <h3><i class="ri-pie-chart-2-fill text-primary"></i> Ringkasan Stok Per Jenis Produk</h3>
+            <span class="cat-summary-sub">Klik jenis produk untuk filter langsung di katalog</span>
+          </div>
+          <div class="category-summary-grid" id="dashCategoryGrid"></div>
+        </div>
+
         <!-- Recent Activity + Low Stock Alert -->
         <div class="dash-grid">
           <div class="card">
@@ -192,6 +201,9 @@
 
       <!-- ===================== TAB: KATALOG PRODUK ===================== -->
       <section class="tab-view" id="tab-produk">
+        <!-- Filter Kategori Cepat (Pill Chips) -->
+        <div class="category-filter-scroll" id="katalogCategoryPills"></div>
+
         <div class="section-toolbar">
           <div class="filter-bar">
             <select id="filterKategori" class="form-select-sm">
@@ -257,7 +269,15 @@
                       <i class="ri-qr-scan-2-line"></i> Scan Barcode
                     </button>
                   </div>
-                  <select id="masukProduk" class="form-control" required>
+                  <!-- Filter Jenis Produk Cepat -->
+                  <div class="tx-cat-filter" id="masukCatFilter">
+                    <button type="button" class="tx-cat-btn active" data-cat="">Semua</button>
+                    <button type="button" class="tx-cat-btn" data-cat="Voucher &amp; Pulsa"><i class="ri-wifi-line"></i> Voucher</button>
+                    <button type="button" class="tx-cat-btn" data-cat="Rokok"><i class="ri-fire-line"></i> Rokok</button>
+                    <button type="button" class="tx-cat-btn" data-cat="Makanan &amp; Minuman"><i class="ri-restaurant-line"></i> F&amp;B</button>
+                    <button type="button" class="tx-cat-btn" data-cat="ATK"><i class="ri-pencil-ruler-2-line"></i> ATK</button>
+                  </div>
+                  <select id="masukProduk" class="form-control" required style="margin-top:.4rem;">
                     <option value="">-- Pilih Barang --</option>
                   </select>
                 </div>
@@ -325,7 +345,15 @@
                       <i class="ri-qr-scan-2-line"></i> Scan Barcode
                     </button>
                   </div>
-                  <select id="keluarProduk" class="form-control" required>
+                  <!-- Filter Jenis Produk Cepat -->
+                  <div class="tx-cat-filter" id="keluarCatFilter">
+                    <button type="button" class="tx-cat-btn active" data-cat="">Semua</button>
+                    <button type="button" class="tx-cat-btn" data-cat="Voucher &amp; Pulsa"><i class="ri-wifi-line"></i> Voucher</button>
+                    <button type="button" class="tx-cat-btn" data-cat="Rokok"><i class="ri-fire-line"></i> Rokok</button>
+                    <button type="button" class="tx-cat-btn" data-cat="Makanan &amp; Minuman"><i class="ri-restaurant-line"></i> F&amp;B</button>
+                    <button type="button" class="tx-cat-btn" data-cat="ATK"><i class="ri-pencil-ruler-2-line"></i> ATK</button>
+                  </div>
+                  <select id="keluarProduk" class="form-control" required style="margin-top:.4rem;">
                     <option value="">-- Pilih Barang --</option>
                   </select>
                 </div>
@@ -393,6 +421,8 @@
             <span>Masukkan jumlah fisik nyata hasil penghitungan. Sistem akan menampilkan selisih antara stok tercatat
               dan stok fisik. Klik <strong>Sesuaikan Stok Sistem</strong> untuk menyimpan koreksi.</span>
           </div>
+          <!-- Filter Kategori Opname -->
+          <div class="category-filter-scroll" id="opnameCategoryPills" style="margin-bottom:.75rem;"></div>
           <div class="table-wrap">
             <table class="data-table" id="tableOpname">
               <thead>
@@ -493,13 +523,17 @@
               </div>
             </div>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="produkKategori">Kategori <span class="req">*</span></label>
-              <input type="text" id="produkKategori" class="form-control" required placeholder="e.g. Sembako, Minuman"
-                list="kategoriList" />
-              <datalist id="kategoriList"></datalist>
+          <div class="form-group">
+            <label for="produkKategori">Kategori / Jenis Produk <span class="req">*</span></label>
+            <div class="category-preset-chips" id="categoryPresets">
+              <button type="button" class="preset-chip" data-cat="Voucher &amp; Pulsa" data-satuan="Pcs"><i class="ri-wifi-line"></i> Voucher &amp; Pulsa</button>
+              <button type="button" class="preset-chip" data-cat="Rokok" data-satuan="Bungkus"><i class="ri-fire-line"></i> Rokok</button>
+              <button type="button" class="preset-chip" data-cat="Makanan &amp; Minuman" data-satuan="Pcs"><i class="ri-restaurant-line"></i> Makanan &amp; Minuman</button>
+              <button type="button" class="preset-chip" data-cat="ATK" data-satuan="Pcs"><i class="ri-pencil-ruler-2-line"></i> ATK</button>
             </div>
+            <input type="text" id="produkKategori" class="form-control" required placeholder="Pilih preset di atas atau ketik kategori baru..."
+              list="kategoriList" style="margin-top:.4rem;" />
+            <datalist id="kategoriList"></datalist>
           </div>
           <div class="form-row">
             <div class="form-group">

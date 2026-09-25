@@ -559,6 +559,56 @@ function statusBadge(status) {
   return `<span class="badge badge-${status}">${labels[status] || status}</span>`;
 }
 
+// ============================================================
+//  KLASIFIKASI & METADATA JENIS PRODUK (Voucher, Rokok, F&B, ATK)
+// ============================================================
+function getCategoryMeta(kategori) {
+  const k = (kategori || '').toLowerCase().trim();
+  if (k.includes('vocer') || k.includes('voucher') || k.includes('kuota') || k.includes('pulsa') || k.includes('perdana') || k.includes('paket data') || k.includes('internet')) {
+    return {
+      group: 'Voucher & Pulsa',
+      icon: 'ri-wifi-line',
+      label: 'Voucher & Pulsa',
+      colorCls: 'cat-voucher'
+    };
+  }
+  if (k.includes('rokok') || k.includes('surya') || k.includes('sampoerna') || k.includes('mild') || k.includes('gudang garam') || k.includes('djarum') || k.includes('marlboro') || k.includes('filter') || k.includes('kretek')) {
+    return {
+      group: 'Rokok',
+      icon: 'ri-fire-line',
+      label: 'Rokok',
+      colorCls: 'cat-rokok'
+    };
+  }
+  if (k.includes('makan') || k.includes('minum') || k.includes('snack') || k.includes('kopi') || k.includes('mie') || k.includes('f&b') || k.includes('sembako') || k.includes('biskuit') || k.includes('air') || k.includes('teh')) {
+    return {
+      group: 'Makanan & Minuman',
+      icon: 'ri-restaurant-line',
+      label: 'Makanan & Minuman',
+      colorCls: 'cat-fnb'
+    };
+  }
+  if (k.includes('atk') || k.includes('tulis') || k.includes('kertas') || k.includes('buku') || k.includes('pulpen') || k.includes('pensil') || k.includes('kantor') || k.includes('fotokopi') || k.includes('map') || k.includes('lakban')) {
+    return {
+      group: 'ATK',
+      icon: 'ri-pencil-ruler-2-line',
+      label: 'ATK',
+      colorCls: 'cat-atk'
+    };
+  }
+  return {
+    group: kategori || 'Lainnya',
+    icon: 'ri-price-tag-3-line',
+    label: kategori || 'Umum',
+    colorCls: 'cat-other'
+  };
+}
+
+let currentKatalogCategory = '';
+let currentOpnameCategory = '';
+let currentMasukCategory = '';
+let currentKeluarCategory = '';
+
 // Confirm modal helper
 let confirmCallback = null;
 function showConfirm(title, msg, onOk) {
@@ -799,6 +849,9 @@ function renderDashboard() {
   document.getElementById('statNilai').textContent = formatRupiah(totalNilai);
   document.getElementById('statKritis').textContent = kritis;
 
+  // Ringkasan per jenis produk (Voucher, Rokok, Makanan & Minuman, ATK)
+  renderDashboardCategories();
+
   // Recent transactions (last 6)
   const recentEl = document.getElementById('dashRecentList');
   const recent = [...transactions].sort((a,b) => new Date(b.tgl) - new Date(a.tgl)).slice(0, 6);
@@ -842,26 +895,154 @@ function renderDashboard() {
   }
 }
 
+function renderDashboardCategories() {
+  const container = document.getElementById('dashCategoryGrid');
+  if (!container) return;
+
+  const products = DB.getProducts();
+  const categoriesDef = [
+    { key: 'Voucher & Pulsa', name: 'Voucher & Paket Data', icon: 'ri-wifi-line', cls: 'cat-voucher' },
+    { key: 'Rokok', name: 'Rokok', icon: 'ri-fire-line', cls: 'cat-rokok' },
+    { key: 'Makanan & Minuman', name: 'Makanan & Minuman', icon: 'ri-restaurant-line', cls: 'cat-fnb' },
+    { key: 'ATK', name: 'ATK (Alat Tulis Kantor)', icon: 'ri-pencil-ruler-2-line', cls: 'cat-atk' },
+  ];
+
+  const grouped = {};
+  categoriesDef.forEach(c => {
+    grouped[c.key] = { count: 0, units: 0, aset: 0, ...c };
+  });
+  let otherGroup = { key: 'Lainnya', name: 'Kategori Lainnya', icon: 'ri-price-tag-3-line', cls: 'cat-other', count: 0, units: 0, aset: 0 };
+
+  products.forEach(p => {
+    const meta = getCategoryMeta(p.kategori);
+    const grp = meta.group;
+    if (grouped[grp]) {
+      grouped[grp].count++;
+      grouped[grp].units += (Number(p.stok) || 0);
+      grouped[grp].aset += (Number(p.stok) * Number(p.hargaBeli) || 0);
+    } else {
+      otherGroup.count++;
+      otherGroup.units += (Number(p.stok) || 0);
+      otherGroup.aset += (Number(p.stok) * Number(p.hargaBeli) || 0);
+    }
+  });
+
+  const allCards = [...Object.values(grouped)];
+  if (otherGroup.count > 0) {
+    allCards.push(otherGroup);
+  }
+
+  container.innerHTML = allCards.map(c => `
+    <div class="cat-card" onclick="filterKatalogByGroup('${c.key}')" title="Klik untuk lihat produk ${c.name} di katalog">
+      <div>
+        <div class="cat-card-header">
+          <span class="cat-card-title">${c.name}</span>
+          <div class="cat-card-icon ${c.cls}"><i class="${c.icon}"></i></div>
+        </div>
+        <div class="cat-card-count">
+          ${c.count} <span style="font-size:.78rem;font-weight:500;color:var(--text-3);">SKU</span>
+        </div>
+      </div>
+      <div class="cat-card-stats">
+        <span>Stok: <strong>${c.units.toLocaleString('id-ID')} unit</strong></span>
+        <span>Aset: <strong>${formatRupiah(c.aset)}</strong></span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function filterKatalogByGroup(groupKey) {
+  currentKatalogCategory = groupKey;
+  switchTab('produk');
+  renderTableProduk(groupKey);
+}
+
 // ============================================================
-//  KATALOG PRODUK
+//  KATALOG PRODUK (DENGAN PEMISAHAN KATEGORI)
 // ============================================================
 let editingProdukId = null;
 
-function renderTableProduk(filterKat = '', filterSt = '', q = '') {
+function renderKatalogCategoryPills() {
+  const container = document.getElementById('katalogCategoryPills');
+  if (!container) return;
+
+  const products = DB.getProducts();
+  const categoriesDef = [
+    { key: '', name: 'Semua Produk', icon: 'ri-apps-2-line' },
+    { key: 'Voucher & Pulsa', name: 'Voucher & Pulsa', icon: 'ri-wifi-line' },
+    { key: 'Rokok', name: 'Rokok', icon: 'ri-fire-line' },
+    { key: 'Makanan & Minuman', name: 'Makanan & Minuman', icon: 'ri-restaurant-line' },
+    { key: 'ATK', name: 'ATK', icon: 'ri-pencil-ruler-2-line' },
+  ];
+
+  const counts = { '': products.length };
+  categoriesDef.forEach(c => { if (c.key) counts[c.key] = 0; });
+  let otherCount = 0;
+
+  products.forEach(p => {
+    const meta = getCategoryMeta(p.kategori);
+    if (counts[meta.group] !== undefined) {
+      counts[meta.group]++;
+    } else {
+      otherCount++;
+    }
+  });
+
+  const list = [...categoriesDef];
+  if (otherCount > 0) {
+    list.push({ key: 'Lainnya', name: 'Lainnya', icon: 'ri-price-tag-3-line' });
+    counts['Lainnya'] = otherCount;
+  }
+
+  container.innerHTML = list.map(c => `
+    <button type="button" class="cat-pill ${currentKatalogCategory === c.key ? 'active' : ''}" data-cat="${c.key}">
+      <i class="${c.icon}"></i> ${c.name}
+      <span class="pill-count">${counts[c.key] || 0}</span>
+    </button>
+  `).join('');
+
+  container.querySelectorAll('.cat-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentKatalogCategory = btn.dataset.cat;
+      const sel = document.getElementById('filterKategori');
+      if (sel) sel.value = currentKatalogCategory;
+      renderTableProduk(currentKatalogCategory);
+    });
+  });
+}
+
+function renderTableProduk(filterKat = currentKatalogCategory, filterSt = '', q = '') {
+  currentKatalogCategory = filterKat !== undefined ? filterKat : currentKatalogCategory;
+  renderKatalogCategoryPills();
+
   let products = DB.getProducts();
 
   // Populate kategori datalist & filter select
   const kats = [...new Set(products.map(p => p.kategori).filter(Boolean))];
   const datalist = document.getElementById('kategoriList');
-  datalist.innerHTML = kats.map(k => `<option value="${k}">`).join('');
-  const sel = document.getElementById('filterKategori');
-  const cur = sel.value;
-  sel.innerHTML = `<option value="">Semua Kategori</option>` + kats.map(k => `<option value="${k}" ${k===cur?'selected':''}>${k}</option>`).join('');
-
-  if (filterKat || document.getElementById('filterKategori').value) {
-    const f = filterKat || document.getElementById('filterKategori').value;
-    if (f) products = products.filter(p => p.kategori === f);
+  if (datalist) {
+    datalist.innerHTML = ['Voucher & Pulsa', 'Rokok', 'Makanan & Minuman', 'ATK', ...kats].map(k => `<option value="${k}">`).join('');
   }
+  const sel = document.getElementById('filterKategori');
+  if (sel) {
+    const cur = currentKatalogCategory || sel.value;
+    sel.innerHTML = `<option value="">Semua Kategori</option>` +
+      ['Voucher & Pulsa', 'Rokok', 'Makanan & Minuman', 'ATK'].map(k => `<option value="${k}" ${k === cur ? 'selected' : ''}>${k}</option>`).join('') +
+      kats.filter(k => !['Voucher & Pulsa', 'Rokok', 'Makanan & Minuman', 'ATK'].includes(k)).map(k => `<option value="${k}" ${k === cur ? 'selected' : ''}>${k}</option>`).join('');
+  }
+
+  const activeKat = currentKatalogCategory || (sel ? sel.value : '');
+  if (activeKat) {
+    products = products.filter(p => {
+      const meta = getCategoryMeta(p.kategori);
+      if (activeKat === 'Lainnya') {
+        return !['Voucher & Pulsa', 'Rokok', 'Makanan & Minuman', 'ATK'].includes(meta.group);
+      }
+      return meta.group.toLowerCase() === activeKat.toLowerCase() ||
+             (p.kategori && p.kategori.toLowerCase() === activeKat.toLowerCase());
+    });
+  }
+
   if (filterSt || document.getElementById('filterStatus').value) {
     const f = filterSt || document.getElementById('filterStatus').value;
     if (f) products = products.filter(p => getStockStatus(p) === f);
@@ -877,18 +1058,23 @@ function renderTableProduk(filterKat = '', filterSt = '', q = '') {
 
   const tbody = document.getElementById('bodyProduk');
   if (!products.length) {
-    tbody.innerHTML = `<tr><td colspan="10" class="empty-row"><i class="ri-inbox-2-line"></i> Tidak ada barang ditemukan</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-row"><i class="ri-inbox-2-line"></i> Tidak ada barang dalam kategori ${activeKat ? `"${activeKat}"` : ''}</td></tr>`;
     return;
   }
   tbody.innerHTML = products.map((p, i) => {
     const st = getStockStatus(p);
+    const meta = getCategoryMeta(p.kategori);
     return `<tr>
       <td>${i+1}</td>
       <td class="fw-bold">
         ${p.nama}
         ${p.kode ? `<br><small style="font-family:monospace;font-weight:normal;color:var(--text-3);"><i class="ri-barcode-line"></i> ${p.kode}</small>` : ''}
       </td>
-      <td>${p.kategori || '-'}</td>
+      <td>
+        <span class="cat-badge ${meta.colorCls}">
+          <i class="${meta.icon}"></i> ${p.kategori || meta.label}
+        </span>
+      </td>
       <td>${p.satuan}</td>
       <td class="fw-bold ${st === 'minus' ? 'text-red' : st === 'habis' ? 'text-red' : st === 'menipis' ? 'text-yellow' : ''}">${Number(p.stok).toLocaleString('id-ID')}</td>
       <td>${p.minStok !== undefined && p.minStok !== null ? p.minStok : 0}</td>
@@ -906,10 +1092,13 @@ function renderTableProduk(filterKat = '', filterSt = '', q = '') {
 }
 
 function filterAndRenderProduk(q) {
-  renderTableProduk('', '', q);
+  renderTableProduk(currentKatalogCategory, '', q);
 }
 
-document.getElementById('filterKategori').addEventListener('change', () => renderTableProduk());
+document.getElementById('filterKategori').addEventListener('change', function() {
+  currentKatalogCategory = this.value;
+  renderTableProduk(currentKatalogCategory);
+});
 document.getElementById('filterStatus').addEventListener('change', () => renderTableProduk());
 
 // Add product button
@@ -918,6 +1107,7 @@ document.getElementById('btnAddProduk').addEventListener('click', () => {
   document.getElementById('formProduk').reset();
   document.getElementById('produkId').value = '';
   if (document.getElementById('produkKode')) document.getElementById('produkKode').value = '';
+  document.querySelectorAll('#categoryPresets .preset-chip').forEach(c => c.classList.remove('active'));
   const lbl = document.getElementById('lblProdukStok');
   if (lbl) lbl.textContent = 'Stok Awal';
   document.getElementById('produkStokAwal').value = '0';
@@ -930,6 +1120,42 @@ document.getElementById('closeProdukModal').addEventListener('click', () => docu
 document.getElementById('cancelProdukModal').addEventListener('click', () => document.getElementById('modalProduk').classList.remove('open'));
 document.getElementById('modalProduk').addEventListener('click', (e) => {
   if (e.target === document.getElementById('modalProduk')) document.getElementById('modalProduk').classList.remove('open');
+});
+
+// Preset Chips Kategori di Modal Tambah/Edit Produk
+document.querySelectorAll('#categoryPresets .preset-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#categoryPresets .preset-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    const cat = chip.dataset.cat;
+    const inp = document.getElementById('produkKategori');
+    if (inp) inp.value = cat;
+    const defSatuan = chip.dataset.satuan;
+    const satSelect = document.getElementById('produkSatuan');
+    if (defSatuan && satSelect) {
+      satSelect.value = defSatuan;
+    }
+  });
+});
+
+// Filter Jenis Produk pada Form Barang Masuk
+document.querySelectorAll('#masukCatFilter .tx-cat-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#masukCatFilter .tx-cat-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentMasukCategory = btn.dataset.cat;
+    populateProdukSelects(currentMasukCategory, currentKeluarCategory);
+  });
+});
+
+// Filter Jenis Produk pada Form Barang Keluar
+document.querySelectorAll('#keluarCatFilter .tx-cat-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#keluarCatFilter .tx-cat-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentKeluarCategory = btn.dataset.cat;
+    populateProdukSelects(currentMasukCategory, currentKeluarCategory);
+  });
 });
 
 // Save product
@@ -968,6 +1194,13 @@ function openEditProduk(id) {
   if (document.getElementById('produkKode')) document.getElementById('produkKode').value = p.kode || '';
   document.getElementById('produkNama').value = p.nama;
   document.getElementById('produkKategori').value = p.kategori || '';
+  
+  // Highlight active preset chip if matches
+  const meta = getCategoryMeta(p.kategori);
+  document.querySelectorAll('#categoryPresets .preset-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.cat.toLowerCase() === meta.group.toLowerCase() || c.dataset.cat.toLowerCase() === (p.kategori || '').toLowerCase());
+  });
+
   document.getElementById('produkSatuan').value = p.satuan;
   const lbl = document.getElementById('lblProdukStok');
   if (lbl) lbl.textContent = 'Jumlah Stok';
@@ -992,20 +1225,48 @@ function hapusProduk(id) {
 }
 
 // ============================================================
-//  POPULATE PRODUCT SELECTS (for masuk & keluar forms)
+//  POPULATE PRODUCT SELECTS (dengan Filter Jenis Produk)
 // ============================================================
-function populateProdukSelects() {
+function populateProdukSelects(catMasuk = currentMasukCategory, catKeluar = currentKeluarCategory) {
   const products = DB.getProducts();
-  const opt = products.length
-    ? products.map(p => `<option value="${p.id}">${p.kode ? '[' + p.kode + '] ' : ''}${p.nama} (Stok: ${p.stok} ${p.satuan})</option>`).join('')
-    : '<option value="" disabled>Belum ada barang — tambahkan di Katalog</option>';
 
-  ['masukProduk', 'keluarProduk'].forEach(id => {
-    const el = document.getElementById(id);
-    const prev = el.value;
-    el.innerHTML = `<option value="">-- Pilih Barang --</option>` + opt;
-    if (prev) el.value = prev;
-  });
+  // Filter untuk Form Masuk
+  let prodsMasuk = products;
+  if (catMasuk) {
+    prodsMasuk = products.filter(p => {
+      const meta = getCategoryMeta(p.kategori);
+      return meta.group === catMasuk || p.kategori === catMasuk;
+    });
+  }
+  const optMasuk = prodsMasuk.length
+    ? prodsMasuk.map(p => `<option value="${p.id}">${p.kode ? '[' + p.kode + '] ' : ''}${p.nama} (Stok: ${p.stok} ${p.satuan})</option>`).join('')
+    : `<option value="" disabled>${catMasuk ? 'Belum ada produk ' + catMasuk : 'Belum ada barang di Katalog'}</option>`;
+
+  const elMasuk = document.getElementById('masukProduk');
+  if (elMasuk) {
+    const prev = elMasuk.value;
+    elMasuk.innerHTML = `<option value="">-- Pilih Barang ${catMasuk ? '(' + catMasuk + ')' : ''} --</option>` + optMasuk;
+    if (prev && prodsMasuk.some(p => p.id === prev)) elMasuk.value = prev;
+  }
+
+  // Filter untuk Form Keluar
+  let prodsKeluar = products;
+  if (catKeluar) {
+    prodsKeluar = products.filter(p => {
+      const meta = getCategoryMeta(p.kategori);
+      return meta.group === catKeluar || p.kategori === catKeluar;
+    });
+  }
+  const optKeluar = prodsKeluar.length
+    ? prodsKeluar.map(p => `<option value="${p.id}">${p.kode ? '[' + p.kode + '] ' : ''}${p.nama} (Stok: ${p.stok} ${p.satuan})</option>`).join('')
+    : `<option value="" disabled>${catKeluar ? 'Belum ada produk ' + catKeluar : 'Belum ada barang di Katalog'}</option>`;
+
+  const elKeluar = document.getElementById('keluarProduk');
+  if (elKeluar) {
+    const prev = elKeluar.value;
+    elKeluar.innerHTML = `<option value="">-- Pilih Barang ${catKeluar ? '(' + catKeluar + ')' : ''} --</option>` + optKeluar;
+    if (prev && prodsKeluar.some(p => p.id === prev)) elKeluar.value = prev;
+  }
 }
 
 // ============================================================
@@ -1145,35 +1406,102 @@ function renderListKeluar() {
 }
 
 // ============================================================
-//  HITUNG BARANG / STOCK OPNAME
+//  HITUNG BARANG / STOCK OPNAME (DENGAN PEMISAHAN KATEGORI)
 // ============================================================
-function renderOpname() {
+function renderOpnameCategoryPills() {
+  const container = document.getElementById('opnameCategoryPills');
+  if (!container) return;
+
   const products = DB.getProducts();
+  const categoriesDef = [
+    { key: '', name: 'Semua Produk', icon: 'ri-apps-2-line' },
+    { key: 'Voucher & Pulsa', name: 'Voucher & Pulsa', icon: 'ri-wifi-line' },
+    { key: 'Rokok', name: 'Rokok', icon: 'ri-fire-line' },
+    { key: 'Makanan & Minuman', name: 'Makanan & Minuman', icon: 'ri-restaurant-line' },
+    { key: 'ATK', name: 'ATK', icon: 'ri-pencil-ruler-2-line' },
+  ];
+
+  const counts = { '': products.length };
+  categoriesDef.forEach(c => { if (c.key) counts[c.key] = 0; });
+  let otherCount = 0;
+
+  products.forEach(p => {
+    const meta = getCategoryMeta(p.kategori);
+    if (counts[meta.group] !== undefined) {
+      counts[meta.group]++;
+    } else {
+      otherCount++;
+    }
+  });
+
+  const list = [...categoriesDef];
+  if (otherCount > 0) {
+    list.push({ key: 'Lainnya', name: 'Lainnya', icon: 'ri-price-tag-3-line' });
+    counts['Lainnya'] = otherCount;
+  }
+
+  container.innerHTML = list.map(c => `
+    <button type="button" class="cat-pill ${currentOpnameCategory === c.key ? 'active' : ''}" data-cat="${c.key}">
+      <i class="${c.icon}"></i> ${c.name}
+      <span class="pill-count">${counts[c.key] || 0}</span>
+    </button>
+  `).join('');
+
+  container.querySelectorAll('.cat-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentOpnameCategory = btn.dataset.cat;
+      renderOpname(currentOpnameCategory);
+    });
+  });
+}
+
+function renderOpname(filterCat = currentOpnameCategory) {
+  currentOpnameCategory = filterCat !== undefined ? filterCat : currentOpnameCategory;
+  renderOpnameCategoryPills();
+
+  let products = DB.getProducts();
+  if (currentOpnameCategory) {
+    products = products.filter(p => {
+      const meta = getCategoryMeta(p.kategori);
+      if (currentOpnameCategory === 'Lainnya') {
+        return !['Voucher & Pulsa', 'Rokok', 'Makanan & Minuman', 'ATK'].includes(meta.group);
+      }
+      return meta.group.toLowerCase() === currentOpnameCategory.toLowerCase() ||
+             (p.kategori && p.kategori.toLowerCase() === currentOpnameCategory.toLowerCase());
+    });
+  }
+
   const tbody = document.getElementById('bodyOpname');
   if (!products.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="empty-row"><i class="ri-inbox-2-line"></i> Tambahkan barang di Katalog terlebih dahulu</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-row"><i class="ri-inbox-2-line"></i> Tidak ada barang dalam kategori ${currentOpnameCategory ? `"${currentOpnameCategory}"` : ''}</td></tr>`;
     renderOpnameHistory();
     return;
   }
-  tbody.innerHTML = products.map(p => `
-    <tr data-id="${p.id}" data-sistem="${p.stok}" data-satuan="${p.satuan}" data-nama="${p.nama}">
-      <td class="fw-bold">${p.nama}</td>
-      <td>${p.satuan}</td>
-      <td class="fw-bold">${Number(p.stok).toLocaleString('id-ID')}</td>
-      <td>
-        <input type="number" class="form-control opname-input" 
-               id="opname-${p.id}" 
-               step="any" placeholder="Masukkan jumlah fisik"
-               style="max-width:160px;"
-               oninput="updateDiff('${p.id}')" />
-      </td>
-      <td id="diff-${p.id}" class="diff-zero">—</td>
-      <td>
-        <input type="text" class="form-control" id="opname-ket-${p.id}" 
-               placeholder="Catatan..." style="max-width:180px;" />
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = products.map(p => {
+    const meta = getCategoryMeta(p.kategori);
+    return `
+      <tr data-id="${p.id}" data-sistem="${p.stok}" data-satuan="${p.satuan}" data-nama="${p.nama}">
+        <td class="fw-bold">
+          ${p.nama}
+          <br><span class="cat-badge ${meta.colorCls}" style="font-size:.68rem;padding:.1rem .4rem;margin-top:.2rem;"><i class="${meta.icon}"></i> ${p.kategori || meta.label}</span>
+        </td>
+        <td>${p.satuan}</td>
+        <td class="fw-bold">${Number(p.stok).toLocaleString('id-ID')}</td>
+        <td>
+          <input type="number" class="form-control opname-input" 
+                 id="opname-${p.id}" 
+                 step="any" placeholder="Masukkan jumlah fisik"
+                 style="max-width:160px;"
+                 oninput="updateDiff('${p.id}')" />
+        </td>
+        <td id="diff-${p.id}" class="diff-zero">—</td>
+        <td>
+          <input type="text" class="form-control" id="opname-ket-${p.id}" 
+                 placeholder="Catatan..." style="max-width:180px;" />
+        </td>
+      </tr>
+    `;
+  }).join('');
   renderOpnameHistory();
 }
 
@@ -1374,16 +1702,16 @@ document.getElementById('fileRestoreDb')?.addEventListener('change', function(e)
 
 // Muat data contoh (manual pilihan pengguna)
 document.getElementById('btnLoadSampleData')?.addEventListener('click', () => {
-  showConfirm('Muat Data Contoh', 'Tambahkan 8 produk sembako dan retail contoh ke database Anda?', async () => {
+  showConfirm('Muat Data Contoh', 'Tambahkan produk contoh Voucher, Rokok, Makanan & Minuman, serta ATK ke database?', async () => {
     const seeds = [
-      { id: genId(), nama: 'Beras Premium 5Kg', kategori: 'Sembako', satuan: 'Karung', stok: 50, minStok: 10, hargaBeli: 62000, hargaJual: 70000, deskripsi: '' },
-      { id: genId(), nama: 'Minyak Goreng 1L', kategori: 'Sembako', satuan: 'Botol', stok: 80, minStok: 20, hargaBeli: 14000, hargaJual: 16000, deskripsi: '' },
-      { id: genId(), nama: 'Gula Pasir 1Kg', kategori: 'Sembako', satuan: 'Pcs', stok: 60, minStok: 15, hargaBeli: 13000, hargaJual: 15000, deskripsi: '' },
-      { id: genId(), nama: 'Kopi Kapal Api 165gr', kategori: 'Minuman', satuan: 'Pack', stok: 40, minStok: 10, hargaBeli: 10000, hargaJual: 12500, deskripsi: '' },
-      { id: genId(), nama: 'Sabun Mandi Lifebuoy', kategori: 'Kebersihan', satuan: 'Pcs', stok: 12, minStok: 10, hargaBeli: 3500, hargaJual: 5000, deskripsi: '' },
-      { id: genId(), nama: 'Indomie Goreng', kategori: 'Makanan', satuan: 'Pcs', stok: 48, minStok: 20, hargaBeli: 2800, hargaJual: 3500, deskripsi: '' },
-      { id: genId(), nama: 'Aqua Galon 19L', kategori: 'Minuman', satuan: 'Galon', stok: 20, minStok: 5, hargaBeli: 18000, hargaJual: 22000, deskripsi: '' },
-      { id: genId(), nama: 'Detergen Rinso 900gr', kategori: 'Kebersihan', satuan: 'Pack', stok: 25, minStok: 8, hargaBeli: 21000, hargaJual: 25000, deskripsi: '' },
+      { id: genId(), kode: '8993175535012', nama: 'Voucher Telkomsel 10GB 30 Hari', kategori: 'Voucher & Pulsa', satuan: 'Pcs', stok: 25, minStok: 5, hargaBeli: 28000, hargaJual: 32000, deskripsi: '' },
+      { id: genId(), kode: '8992761123001', nama: 'Voucher Tri 6GB 1 Hari', kategori: 'Voucher & Pulsa', satuan: 'Pcs', stok: 15, minStok: 5, hargaBeli: 8000, hargaJual: 10000, deskripsi: '' },
+      { id: genId(), kode: '8992745123456', nama: 'Sampoerna A Mild 16', kategori: 'Rokok', satuan: 'Bungkus', stok: 30, minStok: 10, hargaBeli: 31500, hargaJual: 34000, deskripsi: '' },
+      { id: genId(), kode: '8992745987654', nama: 'Gudang Garam Surya 12', kategori: 'Rokok', satuan: 'Bungkus', stok: 20, minStok: 8, hargaBeli: 24000, hargaJual: 26000, deskripsi: '' },
+      { id: genId(), kode: '8992753123456', nama: 'Indomie Goreng Original', kategori: 'Makanan & Minuman', satuan: 'Pcs', stok: 48, minStok: 15, hargaBeli: 2900, hargaJual: 3500, deskripsi: '' },
+      { id: genId(), kode: '8992775123456', nama: 'Teh Pucuk Harum 350ml', kategori: 'Makanan & Minuman', satuan: 'Botol', stok: 24, minStok: 6, hargaBeli: 3200, hargaJual: 4000, deskripsi: '' },
+      { id: genId(), kode: '8991389223344', nama: 'Buku Tulis Sinar Dunia 38 Lembar', kategori: 'ATK', satuan: 'Pcs', stok: 40, minStok: 10, hargaBeli: 3500, hargaJual: 4500, deskripsi: '' },
+      { id: genId(), kode: '8992812001122', nama: 'Pulpen Standard AE7 Hitam', kategori: 'ATK', satuan: 'Pcs', stok: 50, minStok: 12, hargaBeli: 2000, hargaJual: 3000, deskripsi: '' },
     ];
     for (const p of seeds) {
       await DB.saveProduct(p);
@@ -1392,7 +1720,7 @@ document.getElementById('btnLoadSampleData')?.addEventListener('click', () => {
     renderDashboard();
     renderTableProduk();
     populateProdukSelects();
-    showToast('8 data contoh berhasil dimasukkan ke database!', 'success');
+    showToast('Produk contoh (Voucher, Rokok, F&B, ATK) berhasil ditambahkan!', 'success');
   });
 });
 
@@ -2223,6 +2551,7 @@ window.switchTab      = switchTab;
 window.triggerDataRefresh = triggerDataRefresh;
 window.openScannerModal   = openScannerModal;
 window.closeScannerModal  = closeScannerModal;
+window.filterKatalogByGroup = filterKatalogByGroup;
 
 async function initApp() {
   await DB.init();
