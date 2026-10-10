@@ -1189,7 +1189,11 @@ function isDateInPeriod(dateStr, period) {
   if (!dateStr) return false;
   if (period === 'all') return true;
 
-  const d = new Date(dateStr);
+  let cleanStr = String(dateStr).trim();
+  if (cleanStr.includes(' ') && !cleanStr.includes('T')) {
+    cleanStr = cleanStr.replace(' ', 'T');
+  }
+  const d = new Date(cleanStr);
   if (isNaN(d.getTime())) return false;
   const now = new Date();
 
@@ -1219,11 +1223,14 @@ function isDateInPeriod(dateStr, period) {
 }
 
 function calculateFinancials(period = currentDashboardPeriod) {
-  const products = DB.getProducts();
-  const transactions = DB.getTransactions();
+  const products = DB.getProducts() || [];
+  const transactions = DB.getTransactions() || [];
 
   const salesTx = transactions.filter(t => {
-    const isSale = t.jenis === 'keluar' && (t.subJenis === 'penjualan' || !t.subJenis || t.subJenis === '');
+    if (!t || t.jenis !== 'keluar') return false;
+    const sub = String(t.subJenis || '').toLowerCase().trim();
+    const ket = String(t.keterangan || '').toLowerCase();
+    const isSale = sub === 'penjualan' || sub === '' || !t.subJenis || ket.includes('penjualan') || ket.includes('kasir pos');
     return isSale && isDateInPeriod(t.tgl, period);
   });
 
@@ -1233,14 +1240,30 @@ function calculateFinancials(period = currentDashboardPeriod) {
   const productProfitMap = {};
 
   salesTx.forEach(t => {
-    const qty = Number(t.jumlah) || 0;
+    const qty = Math.max(0, Number(t.jumlah) || 0);
     const prod = products.find(p => p.id === t.produkId);
-    const jual = Number(t.hargaSatuan) || (qty > 0 ? (Number(t.total) / qty) : (prod ? Number(prod.hargaJual) || 0 : 0));
-    const beli = (t.hargaBeli !== undefined && t.hargaBeli !== null && !isNaN(Number(t.hargaBeli)))
-      ? Number(t.hargaBeli)
-      : (prod ? Number(prod.hargaBeli) || 0 : 0);
+    
+    // Validasi harga jual
+    let jual = 0;
+    if (t.hargaSatuan !== undefined && t.hargaSatuan !== null && !isNaN(Number(t.hargaSatuan))) {
+      jual = Number(t.hargaSatuan);
+    } else if (qty > 0 && t.total !== undefined && t.total !== null && !isNaN(Number(t.total))) {
+      jual = Number(t.total) / qty;
+    } else if (prod && prod.hargaJual !== undefined && !isNaN(Number(prod.hargaJual))) {
+      jual = Number(prod.hargaJual);
+    }
 
-    const omzet = Number(t.total) || (qty * jual);
+    // Validasi harga beli (HPP)
+    let beli = 0;
+    if (t.hargaBeli !== undefined && t.hargaBeli !== null && !isNaN(Number(t.hargaBeli))) {
+      beli = Number(t.hargaBeli);
+    } else if (prod && prod.hargaBeli !== undefined && !isNaN(Number(prod.hargaBeli))) {
+      beli = Number(prod.hargaBeli);
+    }
+
+    const omzet = (t.total !== undefined && t.total !== null && !isNaN(Number(t.total)))
+      ? Number(t.total)
+      : (qty * jual);
     const hpp = qty * beli;
     const laba = omzet - hpp;
 
@@ -1278,6 +1301,7 @@ function calculateFinancials(period = currentDashboardPeriod) {
     const minStok = prod ? Number(prod.minStok) || 0 : 0;
     const kode = prod ? (prod.kode || '') : '';
     const kategori = prod ? (prod.kategori || '') : (p.kategori || '');
+    const margin = p.omzet > 0 ? ((p.laba / p.omzet) * 100) : 0;
 
     return {
       ...p,
@@ -1285,7 +1309,7 @@ function calculateFinancials(period = currentDashboardPeriod) {
       kategori,
       stok,
       minStok,
-      margin: p.omzet > 0 ? ((p.laba / p.omzet) * 100) : 0,
+      margin: Number.isFinite(margin) ? margin : 0,
       salesShare: totalQtySold > 0 ? Math.round((p.qty / totalQtySold) * 100) : 0
     };
   });
@@ -1300,7 +1324,7 @@ function calculateFinancials(period = currentDashboardPeriod) {
     omzet: totalOmzet,
     hpp: totalHpp,
     labaBersih: totalLabaBersih,
-    marginPct: profitMargin,
+    marginPct: Number.isFinite(profitMargin) ? profitMargin : 0,
     topProfitable,
     topSelling
   };
@@ -1391,11 +1415,24 @@ function renderDashboard() {
   if (elKritis) elKritis.textContent = kritis;
 
   // 4. Render Tabel Produk Terlaris & Produk Paling Menguntungkan
-  renderTopSellingTable(fin.topSelling);
-  renderTopProfitableTable(fin.topProfitable);
+  try {
+    renderTopSellingTable(fin.topSelling);
+  } catch (err) {
+    console.error('Error renderTopSellingTable:', err);
+  }
+
+  try {
+    renderTopProfitableTable(fin.topProfitable);
+  } catch (err) {
+    console.error('Error renderTopProfitableTable:', err);
+  }
 
   // 5. Ringkasan per jenis produk (Voucher, Rokok, Makanan & Minuman, ATK)
-  renderDashboardCategories();
+  try {
+    renderDashboardCategories();
+  } catch (err) {
+    console.error('Error renderDashboardCategories:', err);
+  }
 
   // 6. Recent transactions (last 6)
   const recentEl = document.getElementById('dashRecentList');
@@ -1551,10 +1588,15 @@ window.quickRestockProduct = function(produkId) {
   showToast(`Menyiapkan restock barang masuk untuk "${prod ? prod.nama : 'Produk'}". Silakan masukkan jumlah.`, 'info');
 };
 
-function renderTopProfitableTable(items) {
+function renderTopProfitableTable(items = null) {
   const tbody = document.getElementById('bodyTopProfitable');
   const countBadge = document.getElementById('badgeTopProfitCount') || document.getElementById('badgeTopCount');
   if (!tbody) return;
+
+  if (!items) {
+    const fin = calculateFinancials(currentDashboardPeriod);
+    items = fin.topProfitable || [];
+  }
 
   if (!items || items.length === 0) {
     if (countBadge) countBadge.textContent = '0 Produk';
@@ -1578,6 +1620,12 @@ function renderTopProfitableTable(items) {
                        idx === 1 ? '<i class="ri-medal-line text-blue" style="font-size:1rem;"></i> ' :
                        idx === 2 ? '<i class="ri-medal-line text-purple" style="font-size:1rem;"></i> ' : '';
 
+    const labaVal = Number(it.laba) || 0;
+    const marginVal = Number.isFinite(Number(it.margin)) ? Number(it.margin) : 0;
+    const isProfit = labaVal >= 0;
+    const labaColor = isProfit ? 'var(--green)' : 'var(--red)';
+    const marginBadgeCls = marginVal >= 25 ? 'badge-masuk' : (marginVal > 0 ? 'badge-opname' : 'badge-kritis');
+
     return `
       <tr>
         <td>
@@ -1592,10 +1640,10 @@ function renderTopProfitableTable(items) {
         <td style="text-align:center;font-weight:700;">${it.qty} ${it.satuan}</td>
         <td style="text-align:right;font-weight:600;">${formatRupiah(it.omzet)}</td>
         <td style="text-align:right;color:var(--text-2);">${formatRupiah(it.hpp)}</td>
-        <td style="text-align:right;font-weight:800;color:var(--green);">${formatRupiah(it.laba)}</td>
+        <td style="text-align:right;font-weight:800;color:${labaColor};">${formatRupiah(labaVal)}</td>
         <td style="text-align:center;">
-          <span class="badge ${it.margin >= 25 ? 'badge-masuk' : 'badge-opname'}" style="font-weight:700;">
-            ${it.margin.toFixed(1)}%
+          <span class="badge ${marginBadgeCls}" style="font-weight:700;">
+            ${marginVal.toFixed(1)}%
           </span>
         </td>
       </tr>
@@ -3487,6 +3535,33 @@ window.addEventListener('focus', () => {
   });
 });
 
+// Sinkronisasi instan otomatis antar-tab browser (Multi-Tab Real-time Sync)
+window.addEventListener('storage', (e) => {
+  if ([DB.PRODUCTS, DB.TRANSACTIONS, DB.OPNAMES, DB.LAST_UPDATED].includes(e.key)) {
+    try {
+      DB._cache.products = JSON.parse(localStorage.getItem(DB.PRODUCTS)) || [];
+      DB._cache.transactions = JSON.parse(localStorage.getItem(DB.TRANSACTIONS)) || [];
+      DB._cache.opnames = JSON.parse(localStorage.getItem(DB.OPNAMES)) || [];
+      DB._cache.lastUpdated = localStorage.getItem(DB.LAST_UPDATED) || null;
+      DB.updateLastUpdatedDisplay();
+      const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+      renderByTab(activeTab);
+      populateProdukSelects();
+      if (typeof flashAutoSaveIndicator === 'function') {
+        flashAutoSaveIndicator('Data tersinkron otomatis');
+      }
+    } catch (err) {}
+  }
+  if (e.key === Cart.STORAGE_KEY) {
+    try {
+      Cart.items = JSON.parse(localStorage.getItem(Cart.STORAGE_KEY)) || [];
+      Cart.renderCartUI();
+      Cart.updateBadges();
+      if (typeof renderPosProductGrid === 'function') renderPosProductGrid();
+    } catch (err) {}
+  }
+});
+
 // ============================================================
 //  AUTHENTICATION & ROLE-BASED ACCESS CONTROL (RBAC)
 // ============================================================
@@ -4601,15 +4676,28 @@ window.Auth           = Auth;
 window.DraftManager   = DraftManager;
 window.flashAutoSaveIndicator = flashAutoSaveIndicator;
 window.renderTopSellingTable = renderTopSellingTable;
+window.renderTopProfitableTable = renderTopProfitableTable;
 window.quickRestockProduct   = quickRestockProduct;
 window.calculateFinancials   = calculateFinancials;
 
 async function initApp() {
-  await DB.init();
-  Cart.init();
-  Auth.init();
-  DraftManager.initListeners();
-  switchTab('dashboard');
+  // 1. Render awal instan dari memori lokal agar tidak ada spinner macet
+  try {
+    Cart.init();
+    Auth.init();
+    DraftManager.initListeners();
+    switchTab('dashboard');
+  } catch (err) {
+    console.error('Error pre-rendering dashboard:', err);
+  }
+
+  // 2. Sinkronkan dengan server database di latar belakang dan perbarui tampilan
+  try {
+    await DB.init();
+    switchTab('dashboard');
+  } catch (err) {
+    console.warn('DB.init background sync warning:', err);
+  }
 }
 initApp();
 

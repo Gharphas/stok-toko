@@ -39,6 +39,7 @@ function getInitialDb() {
     products: [],
     transactions: [],
     opnames: [],
+    sales: [],
     users: JSON.parse(JSON.stringify(DEFAULT_USERS)),
     lastUpdated: new Date().toISOString()
   };
@@ -52,6 +53,7 @@ function loadDatabase() {
       if (!Array.isArray(data.products)) data.products = [];
       if (!Array.isArray(data.transactions)) data.transactions = [];
       if (!Array.isArray(data.opnames)) data.opnames = [];
+      if (!Array.isArray(data.sales)) data.sales = [];
       if (!Array.isArray(data.users) || data.users.length === 0) {
         data.users = JSON.parse(JSON.stringify(DEFAULT_USERS));
         saveDatabase(data);
