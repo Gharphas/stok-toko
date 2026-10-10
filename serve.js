@@ -150,6 +150,20 @@ const server = http.createServer(async (req, res) => {
   //  REST API: DATABASE SYNCHRONIZATION
   // ==========================================
   if (url.startsWith('/api/')) {
+    // 0. GET /api/info & /api/status -> Info Server & IP Wi-Fi Otomatis
+    if ((url === '/api/info' || url === '/api/status') && req.method === 'GET') {
+      const localIP = getLocalIP();
+      return sendJson(res, 200, {
+        success: true,
+        localIP,
+        port: PORT,
+        serverUrl: `http://${localIP}:${PORT}`,
+        lastUpdated: database.lastUpdated || new Date().toISOString(),
+        productsCount: (database.products || []).length,
+        transactionsCount: (database.transactions || []).length
+      });
+    }
+
     // 1. GET /api/data -> Ambil seluruh database
     if (url === '/api/data' && req.method === 'GET') {
       database = loadDatabase(); // muat status file terbaru

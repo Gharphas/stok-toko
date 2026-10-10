@@ -55,7 +55,10 @@ const DB = {
 
     // 1. Coba hubungi REST API Server (Laptop / Localhost / IP Wi-Fi)
     try {
-      const res = await fetch(apiUrl, { cache: 'no-store' });
+      const res = await fetch(apiUrl + (apiUrl.includes('?') ? '&' : '?') + 't=' + Date.now(), {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      });
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.data) {
@@ -70,7 +73,10 @@ const DB = {
     // 2. Jika bukan di server lokal (misal dibuka di GitHub Pages), coba ambil file data/db.json statis
     if (!loadedData) {
       try {
-        const res = await fetch('./data/db.json?t=' + Date.now(), { cache: 'no-store' });
+        const res = await fetch('./data/db.json?t=' + Date.now(), {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        });
         if (res.ok) {
           const json = await res.json();
           if (json && (Array.isArray(json.products) || Array.isArray(json.transactions))) {
@@ -82,20 +88,27 @@ const DB = {
     }
 
     // 3. Fallback online: coba ambil langsung dari Raw GitHub jika buka online
-    if (!loadedData && (!this._cache.products || this._cache.products.length === 0)) {
+    if (!loadedData || source === 'github') {
       try {
-        const res = await fetch('https://raw.githubusercontent.com/Gharphas/stok-toko/main/data/db.json?t=' + Date.now(), { cache: 'no-store' });
+        const res = await fetch('https://raw.githubusercontent.com/Gharphas/stok-toko/main/data/db.json?t=' + Date.now(), {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        });
         if (res.ok) {
           const json = await res.json();
           if (json && (Array.isArray(json.products) || Array.isArray(json.transactions))) {
-            loadedData = json;
-            source = 'raw_github';
+            const rawTime = json.lastUpdated ? new Date(json.lastUpdated).getTime() : 0;
+            const curTime = (loadedData && loadedData.lastUpdated) ? new Date(loadedData.lastUpdated).getTime() : 0;
+            if (!loadedData || rawTime >= curTime) {
+              loadedData = json;
+              source = 'raw_github';
+            }
           }
         }
       } catch (err) {}
     }
 
-    // PROSES SINKRONISASI CERDAS — ANTI RESET & PERTAHANKAN POSISI TERAKHIR
+    // PROSES SINKRONISASI CERDAS — SELALU DAPATKAN DATA TERBARU
     if (loadedData) {
       const remoteProducts = Array.isArray(loadedData.products) ? loadedData.products : [];
       const remoteTxs = Array.isArray(loadedData.transactions) ? loadedData.transactions : [];
@@ -103,56 +116,42 @@ const DB = {
       const remoteLastUpdated = loadedData.lastUpdated ? new Date(loadedData.lastUpdated).getTime() : 0;
       const localLastUpdated = this._cache.lastUpdated ? new Date(this._cache.lastUpdated).getTime() : 0;
 
-      // Kasus A: Server kosong ([]), tapi HP/Laptop memiliki data produk lokal yang sudah ada
-      if (remoteProducts.length === 0 && this._cache.products.length > 0) {
-        console.log('Server kosong namun data lokal ada. Otomatis sinkronkan data lokal ke server...');
-        if (source === 'server') {
+      // Jika terhubung langsung ke Server Lokal Toko (REST API serve.js):
+      // Server adalah Single Source of Truth pusat toko. Device lain (HP) langsung mengadopsi data server!
+      if (source === 'server') {
+        if (remoteProducts.length === 0 && this._cache.products.length > 0) {
+          // Kasus khusus: Server laptop baru pertama kali jalan dan kosong, kirim data lokal ke server
           await this.restoreFull({
             products: this._cache.products,
             transactions: this._cache.transactions,
             opnames: this._cache.opnames,
             lastUpdated: this._cache.lastUpdated || new Date().toISOString()
           });
+        } else {
+          // Server punya data (atau data lokal kosong): Adopsi data server secara penuh
+          this._cache.products = remoteProducts;
+          this._cache.transactions = remoteTxs;
+          this._cache.opnames = remoteOpnames;
+          this._cache.lastUpdated = loadedData.lastUpdated || new Date().toISOString();
+          this._persistLocal();
         }
-        this._isServer = (source === 'server');
-        this._mode = source;
-        this.updateStatusPill(true, source);
+        this._isServer = true;
+        this._mode = 'server';
+        this.updateStatusPill(true, 'server');
         return true;
       }
 
-      // Kasus B: Data lokal kosong (HP baru dibuka), ambil langsung dari remote
-      if (this._cache.products.length === 0 && remoteProducts.length > 0) {
+      // Jika dibuka di Device Lain lewat link GitHub Pages:
+      // Terapkan data remote jika lokal kosong ATAU jika remote memiliki timestamp baru / data berbeda
+      if (this._cache.products.length === 0 || remoteLastUpdated >= localLastUpdated || remoteProducts.length !== this._cache.products.length || remoteTxs.length !== this._cache.transactions.length) {
         this._cache.products = remoteProducts;
         this._cache.transactions = remoteTxs;
         this._cache.opnames = remoteOpnames;
         this._cache.lastUpdated = loadedData.lastUpdated || new Date().toISOString();
         this._persistLocal();
-        this._isServer = (source === 'server');
-        this._mode = source;
-        this.updateStatusPill(true, source);
-        return true;
       }
 
-      // Kasus C: Keduanya ada data -> gunakan data yang paling update
-      if (remoteLastUpdated >= localLastUpdated || remoteProducts.length >= this._cache.products.length) {
-        this._cache.products = remoteProducts;
-        this._cache.transactions = remoteTxs;
-        this._cache.opnames = remoteOpnames;
-        this._cache.lastUpdated = loadedData.lastUpdated || new Date().toISOString();
-        this._persistLocal();
-      } else {
-        // Data lokal lebih baru, jika terhubung ke server, kirim ke server
-        if (source === 'server') {
-          await this.restoreFull({
-            products: this._cache.products,
-            transactions: this._cache.transactions,
-            opnames: this._cache.opnames,
-            lastUpdated: this._cache.lastUpdated || new Date().toISOString()
-          });
-        }
-      }
-
-      this._isServer = (source === 'server');
+      this._isServer = false;
       this._mode = source;
       this.updateStatusPill(true, source);
       return true;
@@ -1132,9 +1131,19 @@ overlayEl?.addEventListener('click', closeMobileSidebar);
 //  PANDUAN BUKA DI HANDPHONE MODAL
 // ============================================================
 const modalPhoneGuide = document.getElementById('modalPhoneGuide');
-function showPhoneGuide() {
+async function showPhoneGuide() {
   if (modalPhoneGuide) modalPhoneGuide.classList.add('open');
   closeMobileSidebar();
+  try {
+    const res = await fetch('/api/info');
+    if (res.ok) {
+      const info = await res.json();
+      if (info && info.serverUrl) {
+        const inp = document.getElementById('wifiUrlInput');
+        if (inp) inp.value = info.serverUrl;
+      }
+    }
+  } catch {}
 }
 function hidePhoneGuide() {
   if (modalPhoneGuide) modalPhoneGuide.classList.remove('open');
@@ -4681,7 +4690,7 @@ window.quickRestockProduct   = quickRestockProduct;
 window.calculateFinancials   = calculateFinancials;
 
 async function initApp() {
-  // 1. Render awal instan dari memori lokal agar tidak ada spinner macet
+  // 1. Render awal instan dari memori lokal agar tidak ada layar kosong
   try {
     Cart.init();
     Auth.init();
@@ -4691,13 +4700,30 @@ async function initApp() {
     console.error('Error pre-rendering dashboard:', err);
   }
 
-  // 2. Sinkronkan dengan server database di latar belakang dan perbarui tampilan
+  // 2. Sinkronkan dengan server database / GitHub dan SELALU perbarui tampilan dengan data terbaru
   try {
     await DB.init();
-    switchTab('dashboard');
   } catch (err) {
     console.warn('DB.init background sync warning:', err);
+  } finally {
+    // Pastikan antarmuka langsung menampilkan data terbaru yang berhasil diunduh
+    const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+    renderByTab(activeTab);
+    populateProdukSelects();
+    if (typeof renderPosProductGrid === 'function') renderPosProductGrid();
   }
+
+  // 3. Deteksi URL server lokal secara otomatis untuk kemudahan akses device lain
+  try {
+    const res = await fetch('/api/info');
+    if (res.ok) {
+      const info = await res.json();
+      if (info && info.serverUrl) {
+        const inp = document.getElementById('wifiUrlInput');
+        if (inp) inp.value = info.serverUrl;
+      }
+    }
+  } catch {}
 }
 initApp();
 
