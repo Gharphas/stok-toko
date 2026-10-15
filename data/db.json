@@ -55,7 +55,7 @@
   ],
   "transactions": [],
   "opnames": [],
-  "lastUpdated": "2026-09-25T08:27:31.968Z",
+  "lastUpdated": "2026-10-15T17:20:40.134Z",
   "users": [
     {
       "id": "usr_admin",
@@ -73,5 +73,6 @@
       "role": "kasir",
       "createdAt": "2026-09-25T08:27:31.968Z"
     }
-  ]
+  ],
+  "sales": []
 }

@@ -423,7 +423,8 @@ const server = http.createServer(async (req, res) => {
     // 6. POST /api/opname -> Simpan penyesuaian stock opname
     if (url === '/api/opname' && req.method === 'POST') {
       try {
-        const { changes } = await parseJsonBody(req);
+        const payload = await parseJsonBody(req);
+        const changes = payload.changes;
         database = loadDatabase();
 
         if (Array.isArray(changes) && changes.length) {
