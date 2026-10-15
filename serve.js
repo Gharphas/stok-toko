@@ -71,6 +71,12 @@ function loadDatabase() {
 function saveDatabase(db) {
   try {
     db.lastUpdated = new Date().toISOString();
+    const backupFile = path.join(DATA_DIR, 'db.backup.json');
+    if (fs.existsSync(DB_FILE)) {
+      try {
+        fs.copyFileSync(DB_FILE, backupFile);
+      } catch (e) {}
+    }
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
     return true;
   } catch (err) {
@@ -480,6 +486,92 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 200, { success: true, message: 'Database berhasil dipulihkan', data: database });
         }
         return sendJson(res, 400, { success: false, message: 'Format data backup tidak valid' });
+      } catch (err) {
+        return sendJson(res, 500, { success: false, message: err.message });
+      }
+    }
+
+    // 8b. POST /api/sync -> Sinkronisasi dua arah otomatis (merge data baru tanpa timpa)
+    if (url === '/api/sync' && req.method === 'POST') {
+      try {
+        const payload = await parseJsonBody(req);
+        database = loadDatabase();
+
+        // 1. Merge Products
+        if (Array.isArray(payload.products)) {
+          const prodMap = new Map();
+          for (const p of database.products) {
+            if (p && p.id) prodMap.set(p.id, p);
+          }
+          for (const p of payload.products) {
+            if (!p || !p.id) continue;
+            if (!prodMap.has(p.id)) {
+              prodMap.set(p.id, p);
+            } else {
+              const cur = prodMap.get(p.id);
+              const pTime = new Date(p.updatedAt || p.createdAt || 0).getTime();
+              const cTime = new Date(cur.updatedAt || cur.createdAt || 0).getTime();
+              if (pTime >= cTime) {
+                prodMap.set(p.id, { ...cur, ...p });
+              }
+            }
+          }
+          database.products = Array.from(prodMap.values());
+        }
+
+        // 2. Merge Transactions
+        if (Array.isArray(payload.transactions)) {
+          const txMap = new Map();
+          for (const t of database.transactions) {
+            if (t && t.id) txMap.set(t.id, t);
+          }
+          for (const t of payload.transactions) {
+            if (t && t.id && !txMap.has(t.id)) {
+              txMap.set(t.id, t);
+            }
+          }
+          database.transactions = Array.from(txMap.values());
+          database.transactions.sort((a, b) => new Date(b.tgl || 0) - new Date(a.tgl || 0));
+        }
+
+        // 3. Merge Opnames
+        if (Array.isArray(payload.opnames)) {
+          const opMap = new Map();
+          for (const o of database.opnames) {
+            if (o && o.id) opMap.set(o.id, o);
+          }
+          for (const o of payload.opnames) {
+            if (o && o.id && !opMap.has(o.id)) {
+              opMap.set(o.id, o);
+            }
+          }
+          database.opnames = Array.from(opMap.values());
+          database.opnames.sort((a, b) => new Date(b.tgl || 0) - new Date(a.tgl || 0));
+        }
+
+        // 4. Merge Sales
+        if (Array.isArray(payload.sales)) {
+          if (!Array.isArray(database.sales)) database.sales = [];
+          const sMap = new Map();
+          for (const s of database.sales) {
+            if (s && (s.id || s.invoiceNo)) sMap.set(s.id || s.invoiceNo, s);
+          }
+          for (const s of payload.sales) {
+            const key = s ? (s.id || s.invoiceNo) : null;
+            if (key && !sMap.has(key)) {
+              sMap.set(key, s);
+            }
+          }
+          database.sales = Array.from(sMap.values());
+          database.sales.sort((a, b) => new Date(b.tgl || 0) - new Date(a.tgl || 0));
+        }
+
+        saveDatabase(database);
+        return sendJson(res, 200, {
+          success: true,
+          message: 'Data berhasil disinkronkan dan disimpan otomatis ke database',
+          data: database
+        });
       } catch (err) {
         return sendJson(res, 500, { success: false, message: err.message });
       }

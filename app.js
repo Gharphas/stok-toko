@@ -10,15 +10,99 @@
 // ============================================================
 //  DATABASE MANAGER (Multi-device Real-Time Sync & Protection)
 // ============================================================
+// ============================================================
+//  PERMANENT INDEXEDDB STORAGE (Secondary Fail-Safe Layer)
+// ============================================================
+const IDBStore = {
+  DB_NAME: 'StockMasterDB',
+  STORE_NAME: 'snapshots',
+  _dbPromise: null,
+
+  getDB() {
+    if (typeof window === 'undefined' || !window.indexedDB) return Promise.resolve(null);
+    if (!this._dbPromise) {
+      this._dbPromise = new Promise((resolve) => {
+        try {
+          const req = window.indexedDB.open(this.DB_NAME, 1);
+          req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+              db.createObjectStore(this.STORE_NAME);
+            }
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(null);
+        } catch {
+          resolve(null);
+        }
+      });
+    }
+    return this._dbPromise;
+  },
+
+  async set(key, val) {
+    try {
+      const db = await this.getDB();
+      if (!db) return false;
+      return new Promise((resolve) => {
+        const tx = db.transaction(this.STORE_NAME, 'readwrite');
+        const store = tx.objectStore(this.STORE_NAME);
+        store.put(val, key);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      });
+    } catch {
+      return false;
+    }
+  },
+
+  async get(key) {
+    try {
+      const db = await this.getDB();
+      if (!db) return null;
+      return new Promise((resolve) => {
+        const tx = db.transaction(this.STORE_NAME, 'readonly');
+        const store = tx.objectStore(this.STORE_NAME);
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      });
+    } catch {
+      return null;
+    }
+  }
+};
+
+// Real-Time Cross-Tab Broadcast Channel
+let syncBroadcastChannel = null;
+try {
+  if (typeof BroadcastChannel !== 'undefined') {
+    syncBroadcastChannel = new BroadcastChannel('sm_sync_channel');
+    syncBroadcastChannel.onmessage = (evt) => {
+      if (evt.data && evt.data.type === 'DATA_SAVED') {
+        if (typeof DB !== 'undefined' && DB.syncFromLocalStorage) {
+          DB.syncFromLocalStorage();
+        }
+      }
+    };
+  }
+} catch (e) {}
+
+// ============================================================
+//  DATABASE MANAGER (Multi-device Real-Time Sync & Protection)
+// ============================================================
 const DB = {
   PRODUCTS: 'sm_products',
   TRANSACTIONS: 'sm_transactions',
   OPNAMES: 'sm_opnames',
+  SALES: 'sm_sales',
   LAST_UPDATED: 'sm_last_updated',
   SERVER_URL: 'sm_server_url',
+  BACKUP_SNAPSHOT: 'sm_backup_snapshot',
   _isServer: false,
   _mode: 'offline', // 'server' | 'github' | 'raw_github' | 'offline'
-  _cache: { products: [], transactions: [], opnames: [], lastUpdated: null },
+  _cache: { products: [], transactions: [], opnames: [], sales: [], lastUpdated: null },
+  _autoSyncTimer: null,
 
   getApiUrl(endpoint) {
     const custom = localStorage.getItem(this.SERVER_URL);
@@ -32,20 +116,113 @@ const DB = {
     return endpoint;
   },
 
+  // Penggabungan data cerdas tanpa menghilangkan barang/mutasi baru
+  mergeProducts(localList, remoteList) {
+    const map = new Map();
+    for (const p of (remoteList || [])) {
+      if (p && p.id) map.set(p.id, { ...p });
+    }
+    for (const p of (localList || [])) {
+      if (!p || !p.id) continue;
+      if (!map.has(p.id)) {
+        map.set(p.id, { ...p });
+      } else {
+        const cur = map.get(p.id);
+        const pTime = new Date(p.updatedAt || p.createdAt || 0).getTime();
+        const cTime = new Date(cur.updatedAt || cur.createdAt || 0).getTime();
+        if (pTime >= cTime) {
+          map.set(p.id, { ...cur, ...p });
+        }
+      }
+    }
+    return Array.from(map.values());
+  },
+
+  mergeTransactions(localList, remoteList) {
+    const map = new Map();
+    for (const t of (remoteList || [])) {
+      if (t && t.id) map.set(t.id, t);
+    }
+    for (const t of (localList || [])) {
+      if (t && t.id && !map.has(t.id)) {
+        map.set(t.id, t);
+      }
+    }
+    const arr = Array.from(map.values());
+    arr.sort((a, b) => new Date(b.tgl || 0) - new Date(a.tgl || 0));
+    return arr;
+  },
+
+  mergeOpnames(localList, remoteList) {
+    const map = new Map();
+    for (const o of (remoteList || [])) {
+      if (o && o.id) map.set(o.id, o);
+    }
+    for (const o of (localList || [])) {
+      if (o && o.id && !map.has(o.id)) {
+        map.set(o.id, o);
+      }
+    }
+    const arr = Array.from(map.values());
+    arr.sort((a, b) => new Date(b.tgl || 0) - new Date(a.tgl || 0));
+    return arr;
+  },
+
+  mergeSales(localList, remoteList) {
+    const map = new Map();
+    for (const s of (remoteList || [])) {
+      if (s && (s.id || s.invoiceNo)) map.set(s.id || s.invoiceNo, s);
+    }
+    for (const s of (localList || [])) {
+      const key = s ? (s.id || s.invoiceNo) : null;
+      if (key && !map.has(key)) {
+        map.set(key, s);
+      }
+    }
+    const arr = Array.from(map.values());
+    arr.sort((a, b) => new Date(b.tgl || 0) - new Date(a.tgl || 0));
+    return arr;
+  },
+
   async init() {
     // 1. Muat dari localStorage terlebih dahulu (instant UI render, anti blank)
     try {
       this._cache.products = JSON.parse(localStorage.getItem(this.PRODUCTS)) || [];
       this._cache.transactions = JSON.parse(localStorage.getItem(this.TRANSACTIONS)) || [];
       this._cache.opnames = JSON.parse(localStorage.getItem(this.OPNAMES)) || [];
+      this._cache.sales = JSON.parse(localStorage.getItem(this.SALES)) || [];
       this._cache.lastUpdated = localStorage.getItem(this.LAST_UPDATED) || null;
     } catch {
-      this._cache = { products: [], transactions: [], opnames: [], lastUpdated: null };
+      this._cache = { products: [], transactions: [], opnames: [], sales: [], lastUpdated: null };
     }
+
+    // 1b. Fail-safe: Jika localStorage kosong, coba pulihkan dari IndexedDB
+    if (this._cache.products.length === 0) {
+      try {
+        const idbData = await IDBStore.get('db_backup');
+        if (idbData && Array.isArray(idbData.products) && idbData.products.length > 0) {
+          this._cache.products = idbData.products;
+          this._cache.transactions = idbData.transactions || [];
+          this._cache.opnames = idbData.opnames || [];
+          this._cache.sales = idbData.sales || [];
+          this._cache.lastUpdated = idbData.lastUpdated || new Date().toISOString();
+          this._persistLocal(false);
+          console.info('Database otomatis dipulihkan dari IndexedDB backup');
+        }
+      } catch (err) {}
+    }
+
     this.updateLastUpdatedDisplay();
 
     // 2. Hubungkan ke database server (data/db.json) atau GitHub database
     await this.fetchFromServer();
+
+    // 3. Auto-sync periodic timer (setiap 6 detik cek server & sinkronkan penambahan offline)
+    if (!this._autoSyncTimer) {
+      this._autoSyncTimer = setInterval(() => {
+        this.pushSyncToServer();
+      }, 6000);
+    }
   },
 
   async fetchFromServer() {
@@ -108,47 +285,37 @@ const DB = {
       } catch (err) {}
     }
 
-    // PROSES SINKRONISASI CERDAS — SELALU DAPATKAN DATA TERBARU
+    // PROSES SINKRONISASI CERDAS — GABUNGKAN PENAMBAHAN DATA (TIDAK PERNAH TIMPA DATA LOKAL BARU)
     if (loadedData) {
       const remoteProducts = Array.isArray(loadedData.products) ? loadedData.products : [];
       const remoteTxs = Array.isArray(loadedData.transactions) ? loadedData.transactions : [];
       const remoteOpnames = Array.isArray(loadedData.opnames) ? loadedData.opnames : [];
-      const remoteLastUpdated = loadedData.lastUpdated ? new Date(loadedData.lastUpdated).getTime() : 0;
-      const localLastUpdated = this._cache.lastUpdated ? new Date(this._cache.lastUpdated).getTime() : 0;
+      const remoteSales = Array.isArray(loadedData.sales) ? loadedData.sales : [];
 
-      // Jika terhubung langsung ke Server Lokal Toko (REST API serve.js):
-      // Server adalah Single Source of Truth pusat toko. Device lain (HP) langsung mengadopsi data server!
+      const mergedProducts = this.mergeProducts(this._cache.products, remoteProducts);
+      const mergedTxs = this.mergeTransactions(this._cache.transactions, remoteTxs);
+      const mergedOpnames = this.mergeOpnames(this._cache.opnames, remoteOpnames);
+      const mergedSales = this.mergeSales(this._cache.sales, remoteSales);
+
+      const hadNewLocalAdditions = (mergedProducts.length > remoteProducts.length) ||
+                                   (mergedTxs.length > remoteTxs.length) ||
+                                   (mergedSales.length > remoteSales.length);
+
+      this._cache.products = mergedProducts;
+      this._cache.transactions = mergedTxs;
+      this._cache.opnames = mergedOpnames;
+      this._cache.sales = mergedSales;
+      this._cache.lastUpdated = loadedData.lastUpdated || new Date().toISOString();
+      this._persistLocal(false);
+
       if (source === 'server') {
-        if (remoteProducts.length === 0 && this._cache.products.length > 0) {
-          // Kasus khusus: Server laptop baru pertama kali jalan dan kosong, kirim data lokal ke server
-          await this.restoreFull({
-            products: this._cache.products,
-            transactions: this._cache.transactions,
-            opnames: this._cache.opnames,
-            lastUpdated: this._cache.lastUpdated || new Date().toISOString()
-          });
-        } else {
-          // Server punya data (atau data lokal kosong): Adopsi data server secara penuh
-          this._cache.products = remoteProducts;
-          this._cache.transactions = remoteTxs;
-          this._cache.opnames = remoteOpnames;
-          this._cache.lastUpdated = loadedData.lastUpdated || new Date().toISOString();
-          this._persistLocal();
-        }
         this._isServer = true;
         this._mode = 'server';
         this.updateStatusPill(true, 'server');
+        if (hadNewLocalAdditions) {
+          this.pushSyncToServer();
+        }
         return true;
-      }
-
-      // Jika dibuka di Device Lain lewat link GitHub Pages:
-      // Terapkan data remote jika lokal kosong ATAU jika remote memiliki timestamp baru / data berbeda
-      if (this._cache.products.length === 0 || remoteLastUpdated >= localLastUpdated || remoteProducts.length !== this._cache.products.length || remoteTxs.length !== this._cache.transactions.length) {
-        this._cache.products = remoteProducts;
-        this._cache.transactions = remoteTxs;
-        this._cache.opnames = remoteOpnames;
-        this._cache.lastUpdated = loadedData.lastUpdated || new Date().toISOString();
-        this._persistLocal();
       }
 
       this._isServer = false;
@@ -164,17 +331,104 @@ const DB = {
     return false;
   },
 
-  _persistLocal() {
-    localStorage.setItem(this.PRODUCTS, JSON.stringify(this._cache.products));
-    localStorage.setItem(this.TRANSACTIONS, JSON.stringify(this._cache.transactions));
-    localStorage.setItem(this.OPNAMES, JSON.stringify(this._cache.opnames));
-    if (this._cache.lastUpdated) {
-      localStorage.setItem(this.LAST_UPDATED, this._cache.lastUpdated);
+  // Simpan otomatis ke LocalStorage & cadangkan ke IndexedDB
+  _persistLocal(triggerFlash = true) {
+    try {
+      localStorage.setItem(this.PRODUCTS, JSON.stringify(this._cache.products));
+      localStorage.setItem(this.TRANSACTIONS, JSON.stringify(this._cache.transactions));
+      localStorage.setItem(this.OPNAMES, JSON.stringify(this._cache.opnames));
+      localStorage.setItem(this.SALES, JSON.stringify(this._cache.sales || []));
+      if (this._cache.lastUpdated) {
+        localStorage.setItem(this.LAST_UPDATED, this._cache.lastUpdated);
+      }
+      localStorage.setItem(this.BACKUP_SNAPSHOT, JSON.stringify({
+        products: this._cache.products,
+        transactions: this._cache.transactions,
+        opnames: this._cache.opnames,
+        sales: this._cache.sales,
+        lastUpdated: this._cache.lastUpdated
+      }));
+    } catch (e) {
+      console.warn('LocalStorage save warning:', e);
     }
+
+    // Simpan permanen ke IndexedDB (asinkron di latar belakang)
+    try {
+      IDBStore.set('db_backup', {
+        products: this._cache.products,
+        transactions: this._cache.transactions,
+        opnames: this._cache.opnames,
+        sales: this._cache.sales,
+        lastUpdated: this._cache.lastUpdated
+      });
+    } catch (e) {}
+
+    // Siarkan ke tab lain secara real-time
+    if (syncBroadcastChannel) {
+      try {
+        syncBroadcastChannel.postMessage({ type: 'DATA_SAVED', timestamp: Date.now() });
+      } catch (e) {}
+    }
+
     this.updateLastUpdatedDisplay();
-    if (typeof flashAutoSaveIndicator === 'function') {
-      flashAutoSaveIndicator();
+    if (triggerFlash && typeof flashAutoSaveIndicator === 'function') {
+      flashAutoSaveIndicator('✓ Tersimpan Otomatis');
     }
+  },
+
+  syncFromLocalStorage() {
+    try {
+      this._cache.products = JSON.parse(localStorage.getItem(this.PRODUCTS)) || [];
+      this._cache.transactions = JSON.parse(localStorage.getItem(this.TRANSACTIONS)) || [];
+      this._cache.opnames = JSON.parse(localStorage.getItem(this.OPNAMES)) || [];
+      this._cache.sales = JSON.parse(localStorage.getItem(this.SALES)) || [];
+      this._cache.lastUpdated = localStorage.getItem(this.LAST_UPDATED) || null;
+      this.updateLastUpdatedDisplay();
+
+      const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
+      if (typeof renderByTab === 'function') renderByTab(activeTab);
+      if (typeof populateProdukSelects === 'function') populateProdukSelects();
+      if (typeof flashAutoSaveIndicator === 'function') {
+        flashAutoSaveIndicator('✓ Data tersinkron otomatis');
+      }
+    } catch (err) {}
+  },
+
+  async pushSyncToServer() {
+    const payload = {
+      products: this._cache.products,
+      transactions: this._cache.transactions,
+      opnames: this._cache.opnames,
+      sales: this._cache.sales,
+      lastUpdated: this._cache.lastUpdated || new Date().toISOString()
+    };
+
+    try {
+      let res = await fetch(this.getApiUrl('/api/sync'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok && res.status === 404) {
+        res = await fetch(this.getApiUrl('/api/restore'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          this._isServer = true;
+          this._mode = 'server';
+          this.updateStatusPill(true, 'server');
+          return true;
+        }
+      }
+    } catch (err) {
+      // Server offline / tidak terjangkau
+    }
+    return false;
   },
 
   updateLastUpdatedDisplay() {
@@ -188,30 +442,13 @@ const DB = {
   getProductById(id){ return this._cache.products.find(p => p.id === id) || null; },
   getTransactions() { return this._cache.transactions; },
   getOpnames()      { return this._cache.opnames; },
+  getSales()        { return this._cache.sales || []; },
 
   async saveProduct(data) {
     data.updatedAt = new Date().toISOString();
     this._cache.lastUpdated = data.updatedAt;
 
-    if (this._isServer) {
-      try {
-        const res = await fetch(this.getApiUrl('/api/products'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-        const json = await res.json();
-        if (json.success && json.data) {
-          this._cache = json.data;
-          this._persistLocal();
-          return json;
-        }
-      } catch (err) {
-        console.warn('Simpan offline:', err);
-      }
-    }
-
-    // Fallback lokal
+    // 1. Simpan ke state dan storage lokal secara instan
     const idx = this._cache.products.findIndex(p => p.id === data.id);
     if (idx > -1) {
       if (data.stok !== undefined && data.stok !== null && !isNaN(Number(data.stok))) {
@@ -223,59 +460,48 @@ const DB = {
     } else {
       if (!data.id) data.id = genId();
       data.stok = Number(data.stok) || 0;
-      data.createdAt = new Date().toISOString();
+      data.createdAt = data.createdAt || new Date().toISOString();
       this._cache.products.push(data);
     }
-    this._persistLocal();
+    this._persistLocal(true);
+
+    // 2. Simpan otomatis ke server (asinkron)
+    try {
+      const res = await fetch(this.getApiUrl('/api/products'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          this._isServer = true;
+          this._mode = 'server';
+          this.updateStatusPill(true, 'server');
+        }
+      }
+    } catch (err) {
+      // Simpan lokal berhasil, background sync akan menyinkronkan saat terhubung
+    }
+
     return { success: true, product: data };
   },
 
   async deleteProduct(id) {
     this._cache.lastUpdated = new Date().toISOString();
-    if (this._isServer) {
-      try {
-        const res = await fetch(this.getApiUrl(`/api/products/${id}`), { method: 'DELETE' });
-        const json = await res.json();
-        if (json.success && json.data) {
-          this._cache = json.data;
-          this._persistLocal();
-          return json;
-        }
-      } catch (err) {}
-    }
-
     this._cache.products = this._cache.products.filter(p => p.id !== id);
-    this._persistLocal();
+    this._persistLocal(true);
+
+    try {
+      await fetch(this.getApiUrl(`/api/products/${id}`), { method: 'DELETE' });
+    } catch (err) {}
+
     return { success: true };
   },
 
   async catatMasuk(payload) {
     this._cache.lastUpdated = new Date().toISOString();
-    if (this._isServer) {
-      let json = null;
-      try {
-        const res = await fetch(this.getApiUrl('/api/masuk'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        json = await res.json();
-      } catch (netErr) {
-        console.warn('Server offline/tidak terjangkau, menggunakan penyimpanan lokal:', netErr);
-        json = null;
-      }
-      if (json) {
-        if (json.success && json.data) {
-          this._cache = json.data;
-          this._persistLocal();
-          return json;
-        } else {
-          throw new Error(json.message || 'Gagal menyimpan barang masuk');
-        }
-      }
-    }
 
-    // Fallback offline
     const idx = this._cache.products.findIndex(p => p.id === payload.produkId);
     if (idx === -1) throw new Error('Barang tidak ditemukan');
 
@@ -298,41 +524,31 @@ const DB = {
       total: qty * (Number(payload.hargaBeli) || prod.hargaBeli),
       supplier: payload.supplier || '',
       nota: payload.nota || '',
+      operator: payload.operator || 'Admin',
       keterangan: payload.keterangan || '',
       tgl: new Date().toISOString()
     };
     this._cache.transactions.unshift(tx);
-    this._persistLocal();
+    this._persistLocal(true);
+
+    try {
+      const res = await fetch(this.getApiUrl('/api/masuk'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        this._isServer = true;
+        this.updateStatusPill(true, 'server');
+      }
+    } catch (netErr) {}
+
     return { success: true, product: prod, transaction: tx };
   },
 
   async catatKeluar(payload) {
     this._cache.lastUpdated = new Date().toISOString();
-    if (this._isServer) {
-      let json = null;
-      try {
-        const res = await fetch(this.getApiUrl('/api/keluar'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        json = await res.json();
-      } catch (netErr) {
-        console.warn('Server offline/tidak terjangkau, menggunakan penyimpanan lokal:', netErr);
-        json = null;
-      }
-      if (json) {
-        if (json.success && json.data) {
-          this._cache = json.data;
-          this._persistLocal();
-          return json;
-        } else {
-          throw new Error(json.message || 'Gagal menyimpan barang keluar');
-        }
-      }
-    }
 
-    // Fallback offline
     const idx = this._cache.products.findIndex(p => p.id === payload.produkId);
     if (idx === -1) throw new Error('Barang tidak ditemukan');
 
@@ -355,41 +571,30 @@ const DB = {
       hargaBeli: Number(prod.hargaBeli) || 0,
       hargaSatuan: prod.hargaJual,
       total: qty * prod.hargaJual,
+      operator: payload.operator || 'Kasir',
       keterangan: `[${(payload.jenisKeluar || 'penjualan').toUpperCase()}] ${payload.keterangan || ''}`.trim(),
       tgl: new Date().toISOString()
     };
     this._cache.transactions.unshift(tx);
-    this._persistLocal();
+    this._persistLocal(true);
+
+    try {
+      const res = await fetch(this.getApiUrl('/api/keluar'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        this._isServer = true;
+        this.updateStatusPill(true, 'server');
+      }
+    } catch (netErr) {}
+
     return { success: true, product: prod, transaction: tx };
   },
 
   async checkoutCart(payload) {
     this._cache.lastUpdated = new Date().toISOString();
-    if (this._isServer) {
-      let json = null;
-      try {
-        const res = await fetch(this.getApiUrl('/api/pos/checkout'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        json = await res.json();
-      } catch (netErr) {
-        console.warn('Server offline/tidak terjangkau, menggunakan penyimpanan lokal:', netErr);
-        json = null;
-      }
-      if (json) {
-        if (json.success && json.data) {
-          this._cache = json.data;
-          this._persistLocal();
-          return json;
-        } else {
-          throw new Error(json.message || 'Gagal memproses transaksi kasir di server');
-        }
-      }
-    }
-
-    // Fallback offline
     const now = new Date().toISOString();
     const inv = payload.invoiceNo || ('INV-' + Date.now().toString(36).toUpperCase());
     const createdTxs = [];
@@ -438,11 +643,23 @@ const DB = {
 
     if (!Array.isArray(this._cache.sales)) this._cache.sales = [];
     this._cache.sales.unshift(saleRecord);
-    this._persistLocal();
+    this._persistLocal(true);
+
+    try {
+      const res = await fetch(this.getApiUrl('/api/pos/checkout'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        this._isServer = true;
+        this.updateStatusPill(true, 'server');
+      }
+    } catch (netErr) {}
 
     return {
       success: true,
-      message: `Transaksi kasir ${inv} berhasil diproses!`,
+      message: `Transaksi kasir ${inv} berhasil diproses dan tersimpan otomatis!`,
       sale: saleRecord,
       transactions: createdTxs
     };
@@ -450,23 +667,6 @@ const DB = {
 
   async catatOpname(changes) {
     this._cache.lastUpdated = new Date().toISOString();
-    if (this._isServer) {
-      try {
-        const res = await fetch(this.getApiUrl('/api/opname'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ changes })
-        });
-        const json = await res.json();
-        if (json.success && json.data) {
-          this._cache = json.data;
-          this._persistLocal();
-          return json;
-        }
-      } catch (err) {}
-    }
-
-    // Fallback offline
     changes.forEach(c => {
       const idx = this._cache.products.findIndex(p => p.id === c.id);
       if (idx > -1) {
@@ -485,7 +685,20 @@ const DB = {
       }
     });
     this._cache.opnames.unshift({ id: genId(), tgl: new Date().toISOString(), items: changes });
-    this._persistLocal();
+    this._persistLocal(true);
+
+    try {
+      const res = await fetch(this.getApiUrl('/api/opname'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ changes })
+      });
+      if (res.ok) {
+        this._isServer = true;
+        this.updateStatusPill(true, 'server');
+      }
+    } catch (err) {}
+
     return { success: true };
   },
 
@@ -497,14 +710,15 @@ const DB = {
         const json = await res.json();
         if (json.success && json.data) {
           this._cache = json.data;
-          this._persistLocal();
+          this._persistLocal(true);
           return json;
         }
       } catch (err) {}
     }
     this._cache.transactions = [];
     this._cache.opnames = [];
-    this._persistLocal();
+    this._cache.sales = [];
+    this._persistLocal(true);
     return { success: true };
   },
 
@@ -522,7 +736,7 @@ const DB = {
         const json = await res.json();
         if (json.success && json.data) {
           this._cache = json.data;
-          this._persistLocal();
+          this._persistLocal(true);
           return json;
         }
       } catch (err) {}
@@ -530,7 +744,8 @@ const DB = {
     this._cache.products = Array.isArray(fullData.products) ? fullData.products : [];
     this._cache.transactions = Array.isArray(fullData.transactions) ? fullData.transactions : [];
     this._cache.opnames = Array.isArray(fullData.opnames) ? fullData.opnames : [];
-    this._persistLocal();
+    this._cache.sales = Array.isArray(fullData.sales) ? fullData.sales : [];
+    this._persistLocal(true);
     return { success: true };
   },
 
@@ -539,6 +754,7 @@ const DB = {
       p: this._cache.products,
       t: this._cache.transactions,
       o: this._cache.opnames,
+      s: this._cache.sales || [],
       u: this._cache.lastUpdated || new Date().toISOString()
     };
     try {
@@ -565,6 +781,7 @@ const DB = {
       products: json.p || json.products || [],
       transactions: json.t || json.transactions || [],
       opnames: json.o || json.opnames || [],
+      sales: json.s || json.sales || [],
       lastUpdated: json.u || json.lastUpdated || new Date().toISOString()
     };
     await this.restoreFull(full);
@@ -3546,20 +3763,10 @@ window.addEventListener('focus', () => {
 
 // Sinkronisasi instan otomatis antar-tab browser (Multi-Tab Real-time Sync)
 window.addEventListener('storage', (e) => {
-  if ([DB.PRODUCTS, DB.TRANSACTIONS, DB.OPNAMES, DB.LAST_UPDATED].includes(e.key)) {
-    try {
-      DB._cache.products = JSON.parse(localStorage.getItem(DB.PRODUCTS)) || [];
-      DB._cache.transactions = JSON.parse(localStorage.getItem(DB.TRANSACTIONS)) || [];
-      DB._cache.opnames = JSON.parse(localStorage.getItem(DB.OPNAMES)) || [];
-      DB._cache.lastUpdated = localStorage.getItem(DB.LAST_UPDATED) || null;
-      DB.updateLastUpdatedDisplay();
-      const activeTab = document.querySelector('.nav-item.active')?.dataset.tab || 'dashboard';
-      renderByTab(activeTab);
-      populateProdukSelects();
-      if (typeof flashAutoSaveIndicator === 'function') {
-        flashAutoSaveIndicator('Data tersinkron otomatis');
-      }
-    } catch (err) {}
+  if ([DB.PRODUCTS, DB.TRANSACTIONS, DB.OPNAMES, DB.SALES, DB.LAST_UPDATED].includes(e.key)) {
+    if (typeof DB !== 'undefined' && DB.syncFromLocalStorage) {
+      DB.syncFromLocalStorage();
+    }
   }
   if (e.key === Cart.STORAGE_KEY) {
     try {
