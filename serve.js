@@ -204,8 +204,9 @@ const server = http.createServer(async (req, res) => {
         }
         prod.updatedAt = new Date().toISOString();
 
+        const txId = payload.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
         const tx = {
-          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          id: txId,
           jenis: 'masuk',
           produkId,
           namaProduk: prod.nama,
@@ -217,10 +218,12 @@ const server = http.createServer(async (req, res) => {
           nota: nota || '',
           operator: payload.operator || 'Admin',
           keterangan: keterangan || '',
-          tgl: new Date().toISOString()
+          tgl: payload.tgl || new Date().toISOString()
         };
 
-        database.transactions.unshift(tx);
+        if (!database.transactions.some(t => t.id === txId)) {
+          database.transactions.unshift(tx);
+        }
         saveDatabase(database);
 
         return sendJson(res, 200, {
@@ -260,8 +263,9 @@ const server = http.createServer(async (req, res) => {
         prod.stok = stokSekarang - qty;
         prod.updatedAt = new Date().toISOString();
 
+        const txId = payload.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
         const tx = {
-          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          id: txId,
           jenis: 'keluar',
           subJenis: jenisKeluar || 'penjualan',
           produkId,
@@ -273,10 +277,12 @@ const server = http.createServer(async (req, res) => {
           total: qty * prod.hargaJual,
           operator: payload.operator || 'Kasir',
           keterangan: `[${(jenisKeluar || 'penjualan').toUpperCase()}] ${keterangan || ''}`.trim(),
-          tgl: new Date().toISOString()
+          tgl: payload.tgl || new Date().toISOString()
         };
 
-        database.transactions.unshift(tx);
+        if (!database.transactions.some(t => t.id === txId)) {
+          database.transactions.unshift(tx);
+        }
         saveDatabase(database);
 
         return sendJson(res, 200, {
@@ -308,7 +314,8 @@ const server = http.createServer(async (req, res) => {
         const createdTxs = [];
 
         for (const item of items) {
-          const pIndex = database.products.findIndex(p => p.id === item.produkId);
+          const pId = item.produkId || item.id;
+          const pIndex = database.products.findIndex(p => p.id === pId);
           if (pIndex > -1) {
             const prod = database.products[pIndex];
             const qty = Number(item.qty) || 1;
@@ -319,8 +326,9 @@ const server = http.createServer(async (req, res) => {
             const unitPrice = Number(item.hargaJual) || Number(prod.hargaJual) || 0;
             const itemTotal = qty * unitPrice;
 
+            const txId = item.txId || ('tx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
             const tx = {
-              id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+              id: txId,
               invoiceNo: inv,
               jenis: 'keluar',
               subJenis: 'penjualan',
@@ -335,16 +343,19 @@ const server = http.createServer(async (req, res) => {
               keterangan: `[KASIR POS #${inv}] ${keterangan || ''}`.trim(),
               tgl: now
             };
-            database.transactions.unshift(tx);
+            if (!database.transactions.some(t => t.id === txId)) {
+              database.transactions.unshift(tx);
+            }
             createdTxs.push(tx);
           }
         }
 
+        const saleId = payload.id || ('sale_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
         const saleRecord = {
-          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          id: saleId,
           invoiceNo: inv,
           items: items.map(it => ({
-            produkId: it.produkId,
+            produkId: it.produkId || it.id,
             nama: it.nama,
             satuan: it.satuan || 'pcs',
             qty: Number(it.qty) || 1,
@@ -359,7 +370,9 @@ const server = http.createServer(async (req, res) => {
           tgl: now
         };
 
-        database.sales.unshift(saleRecord);
+        if (!database.sales.some(s => s.id === saleId || (s.invoiceNo && s.invoiceNo === inv))) {
+          database.sales.unshift(saleRecord);
+        }
         database.lastUpdated = now;
         saveDatabase(database);
 

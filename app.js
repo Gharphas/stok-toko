@@ -531,6 +531,9 @@ const DB = {
     this._cache.transactions.unshift(tx);
     this._persistLocal(true);
 
+    payload.id = tx.id;
+    payload.tgl = tx.tgl;
+
     try {
       const res = await fetch(this.getApiUrl('/api/masuk'), {
         method: 'POST',
@@ -577,6 +580,9 @@ const DB = {
     };
     this._cache.transactions.unshift(tx);
     this._persistLocal(true);
+
+    payload.id = tx.id;
+    payload.tgl = tx.tgl;
 
     try {
       const res = await fetch(this.getApiUrl('/api/keluar'), {
@@ -644,6 +650,10 @@ const DB = {
     if (!Array.isArray(this._cache.sales)) this._cache.sales = [];
     this._cache.sales.unshift(saleRecord);
     this._persistLocal(true);
+
+    payload.id = saleRecord.id;
+    payload.invoiceNo = inv;
+    payload.tgl = now;
 
     try {
       const res = await fetch(this.getApiUrl('/api/pos/checkout'), {
@@ -3013,6 +3023,12 @@ document.getElementById('btnManualSyncDb')?.addEventListener('click', () => {
 // ============================================================
 //  SCAN BARCODE & INPUT DATA INSTAN
 // ============================================================
+// Ensure Html5Qrcode is assigned to global if library exists
+if (typeof Html5Qrcode === 'undefined' && typeof window !== 'undefined' && window.__Html5QrcodeLibrary__) {
+  window.Html5Qrcode = window.__Html5QrcodeLibrary__.Html5Qrcode;
+  window.Html5QrcodeScanner = window.__Html5QrcodeLibrary__.Html5QrcodeScanner;
+}
+
 let html5QrCode = null;
 let isScanning = false;
 let scannerTarget = 'action'; // 'action' | 'masuk' | 'keluar' | 'produk_form' | 'katalog'
@@ -3023,30 +3039,36 @@ let currentCameraFacing = 'environment';
 let currentTorch = false;
 let currentScannedProduct = null;
 let currentScanQty = 1;
+let _audioCtx = null;
 
 function playScanBeep(success = true) {
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    if (!_audioCtx || _audioCtx.state === 'closed') {
+      _audioCtx = new AudioContext();
+    }
+    if (_audioCtx.state === 'suspended') {
+      _audioCtx.resume();
+    }
+    const osc = _audioCtx.createOscillator();
+    const gain = _audioCtx.createGain();
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(_audioCtx.destination);
     if (success) {
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(1760, ctx.currentTime);
-      gain.gain.setValueAtTime(0.2, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.frequency.setValueAtTime(1760, _audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.2, _audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + 0.12);
       osc.start();
-      osc.stop(ctx.currentTime + 0.12);
+      osc.stop(_audioCtx.currentTime + 0.12);
     } else {
       osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(320, ctx.currentTime);
-      gain.gain.setValueAtTime(0.25, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+      osc.frequency.setValueAtTime(320, _audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.25, _audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + 0.28);
       osc.start();
-      osc.stop(ctx.currentTime + 0.28);
+      osc.stop(_audioCtx.currentTime + 0.28);
     }
   } catch (e) {}
 }
@@ -3075,6 +3097,22 @@ function updateScannerModeUI() {
     } else {
       sub.textContent = 'Input & cari stok instan dengan kamera atau scanner';
     }
+  }
+}
+
+async function safeStopScanner() {
+  if (html5QrCode) {
+    try {
+      if (html5QrCode.isScanning || (html5QrCode.getState && html5QrCode.getState() === 2)) {
+        await html5QrCode.stop();
+      }
+    } catch (e) {
+      console.warn('Safe stop error:', e);
+    }
+    try {
+      await html5QrCode.clear();
+    } catch (e) {}
+    isScanning = false;
   }
 }
 
@@ -3112,6 +3150,10 @@ async function openScannerModal(target = 'action') {
   lastScannedCode = null;
   lastScanTimestamp = 0;
 
+  if (typeof Html5Qrcode === 'undefined' && typeof window !== 'undefined' && window.__Html5QrcodeLibrary__) {
+    window.Html5Qrcode = window.__Html5QrcodeLibrary__.Html5Qrcode;
+  }
+
   if (typeof Html5Qrcode === 'undefined') {
     document.getElementById('scannerManualBox').style.display = 'block';
     showToast('Scanner kamera sedang disiapkan. Anda juga dapat mengetik barcode manual di bawah.', 'info');
@@ -3119,66 +3161,66 @@ async function openScannerModal(target = 'action') {
   }
 
   try {
-    if (!html5QrCode) {
-      html5QrCode = new Html5Qrcode('scannerReader');
-    }
+    await safeStopScanner();
 
-    if (isScanning) {
-      await html5QrCode.stop();
-      isScanning = false;
-    }
+    const readerEl = document.getElementById('scannerReader');
+    if (readerEl) readerEl.innerHTML = '';
+
+    html5QrCode = new Html5Qrcode('scannerReader');
 
     const config = {
       fps: 15,
-      qrbox: { width: 250, height: 180 },
-      aspectRatio: 1.333333
+      qrbox: (viewfinderWidth, viewfinderHeight) => {
+        const edge = Math.min(viewfinderWidth, viewfinderHeight);
+        return {
+          width: Math.max(200, Math.min(Math.floor(edge * 0.8), 280)),
+          height: Math.max(150, Math.min(Math.floor(edge * 0.6), 200))
+        };
+      }
     };
 
-    await html5QrCode.start(
-      { facingMode: currentCameraFacing },
-      config,
-      onBarcodeScanSuccess,
-      () => {}
-    );
-    isScanning = true;
+    try {
+      await html5QrCode.start(
+        { facingMode: currentCameraFacing },
+        config,
+        onBarcodeScanSuccess,
+        () => {}
+      );
+      isScanning = true;
+    } catch (facingErr) {
+      console.warn('FacingMode camera error, trying camera by ID fallback:', facingErr);
+      const cameras = await Html5Qrcode.getCameras();
+      if (cameras && cameras.length) {
+        const camId = cameras[cameras.length - 1].id;
+        await html5QrCode.start(camId, config, onBarcodeScanSuccess, () => {});
+        isScanning = true;
+      } else {
+        throw facingErr;
+      }
+    }
 
     try {
       const caps = html5QrCode.getRunningTrackCapabilities();
       const torchBtn = document.getElementById('btnToggleTorch');
-      if (torchBtn && caps.torch) {
+      if (torchBtn && caps && caps.torch) {
         torchBtn.style.display = 'inline-flex';
       }
     } catch {}
 
   } catch (err) {
-    console.warn('Gagal membuka kamera facingMode:', err);
-    try {
-      const cameras = await Html5Qrcode.getCameras();
-      if (cameras && cameras.length) {
-        const camId = cameras[cameras.length - 1].id;
-        await html5QrCode.start(camId, { fps: 15, qrbox: { width: 250, height: 180 } }, onBarcodeScanSuccess, () => {});
-        isScanning = true;
-      } else {
-        throw new Error('Tidak ada perangkat kamera');
-      }
-    } catch (e2) {
-      console.warn('Kamera tidak bisa diakses:', e2);
-      document.getElementById('scannerManualBox').style.display = 'block';
-      if (hint) hint.textContent = 'Kamera tidak dapat diakses. Gunakan input manual.';
-      showToast('Kamera tidak dapat dibuka atau izin ditolak. Silakan gunakan input manual / scanner USB.', 'warning');
-    }
+    console.warn('Kamera tidak bisa diakses:', err);
+    document.getElementById('scannerManualBox').style.display = 'block';
+    if (hint) hint.textContent = 'Kamera tidak dapat diakses. Gunakan input manual.';
+    showToast('Kamera tidak dapat dibuka atau izin ditolak. Silakan gunakan input manual / scanner USB.', 'warning');
   }
 }
 
 async function closeScannerModal() {
   const modal = document.getElementById('modalScanner');
   if (modal) modal.classList.remove('open');
-  if (html5QrCode && isScanning) {
-    try {
-      await html5QrCode.stop();
-    } catch (e) {}
-    isScanning = false;
-  }
+  await safeStopScanner();
+  const readerEl = document.getElementById('scannerReader');
+  if (readerEl) readerEl.innerHTML = '';
   const autoBanner = document.getElementById('scanAutoBanner');
   if (autoBanner) autoBanner.style.display = 'none';
   const resCard = document.getElementById('scanResultCard');
@@ -3646,11 +3688,12 @@ document.getElementById('btnScannerOpenCart')?.addEventListener('click', async (
 // Switch Camera Front / Back
 document.getElementById('btnSwitchCamera')?.addEventListener('click', async () => {
   currentCameraFacing = currentCameraFacing === 'environment' ? 'user' : 'environment';
-  if (isScanning && html5QrCode) {
-    await html5QrCode.stop();
-    isScanning = false;
-  }
-  openScannerModal(scannerTarget);
+  await safeStopScanner();
+  const readerEl = document.getElementById('scannerReader');
+  if (readerEl) readerEl.innerHTML = '';
+  setTimeout(() => {
+    openScannerModal(scannerTarget);
+  }, 200);
 });
 
 // Toggle Senter / Torch

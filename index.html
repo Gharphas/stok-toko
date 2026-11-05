@@ -1506,8 +1506,9 @@
 
   <script src="html5-qrcode.min.js"></script>
   <script>
-    if (typeof Html5Qrcode === 'undefined') {
-      document.write('<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"><\/script>');
+    if (typeof Html5Qrcode === 'undefined' && typeof window !== 'undefined' && window.__Html5QrcodeLibrary__) {
+      window.Html5Qrcode = window.__Html5QrcodeLibrary__.Html5Qrcode;
+      window.Html5QrcodeScanner = window.__Html5QrcodeLibrary__.Html5QrcodeScanner;
     }
   </script>
   <script src="app.js"></script>
